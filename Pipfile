@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+ftfy = "*"
+regex = "*"
+tqdm = "*"
+omegaconf = "*"
+pytorch-lightning = "*"
+einops = "*"
+transformers = "*"
+numpy = "*"
+torchvision = "*"
+streamlit = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"
+
+[pipenv]
+allow_prereleases = true
+
+[packages.33cf049]
+path = "./taming-transformers"
