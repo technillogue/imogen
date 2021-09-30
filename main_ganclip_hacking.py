@@ -1,58 +1,21 @@
-#!/usr/bin/env python
+#!/usr/bin/python3.8
 # coding: utf-8
-
-# # Generates images from text prompts with VQGAN and CLIP (z+quantize method).
-#
-# By Katherine Crowson (https://github.com/crowsonkb, https://twitter.com/RiversHaveWings). The original BigGAN+CLIP method was by https://twitter.com/advadnoun.
-#
-
-# In[11]:
-
-
-# @title Licensed under the MIT License
-
-# Copyright (c) 2021 Katherine Crowson
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
-
-# In[ ]:
-
-
-# In[13]:
-import os
 import io
 import json
 
 # import argparse
 import math
+import os
+import re
 import shutil
 import sys
 from pathlib import Path
-
-import imageio
+import time
 
 sys.path.append("./taming-transformers")
 
 import requests
 import torch
-import numpy as np
 from IPython import display
 from omegaconf import OmegaConf
 from PIL import Image
@@ -68,40 +31,34 @@ from CLIP import clip
 # In[14]:
 
 
-def setup():
-    get_ipython().system("nvidia-smi")
+def setup() -> None:
+    print("nvidia-smi")
 
     # In[ ]:
+    target_buffer = open("/dev/stdout")  # could be a pipe or subproc input
+    print("git clone https://github.com/openai/CLIP")
+    print("git clone https://github.com/CompVis/taming-transformers")
+    print("pip install ftfy regex tqdm omegaconf pytorch-lightning einops transformers")
+    print("pip install -e ./taming-transformers")
 
-    get_ipython().system("git clone https://github.com/openai/CLIP")
-    get_ipython().system(
-        "git clone https://github.com/CompVis/taming-transformers"
-    )
-    get_ipython().system(
-        "pip install ftfy regex tqdm omegaconf pytorch-lightning einops transformers"
-    )
-    get_ipython().system("pip install -e ./taming-transformers")
-
-    # In[ ]:
-
-    get_ipython().system(
-        "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' > vqgan_imagenet_f16_1024.yaml"
-    )
-    get_ipython().system(
-        "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fckpts%2Flast.ckpt&dl=1' > vqgan_imagenet_f16_1024.ckpt"
-    )
-    get_ipython().system(
+    use_smaller_imagenet = False
+    if use_smaller_imagenet:
+        print(
+            "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' > vqgan_imagenet_f16_1024.yaml"
+        )
+        print(
+            "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fckpts%2Flast.ckpt&dl=1' > vqgan_imagenet_f16_1024.ckpt"
+        )
+    print(
         "curl -L 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' > vqgan_imagenet_f16_16384.yaml"
     )
-    get_ipython().system(
+    print(
         "curl -L 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1' > vqgan_imagenet_f16_16384.ckpt"
     )
 
 
 def sinc(x):
-    return torch.where(
-        x != 0, torch.sin(math.pi * x) / (math.pi * x), x.new_ones([])
-    )
+    return torch.where(x != 0, torch.sin(math.pi * x) / (math.pi * x), x.new_ones([]))
 
 
 def lanczos(x, a):
@@ -139,9 +96,7 @@ def resample(input, size, align_corners=True):
         input = F.conv2d(input, kernel_w[None, None, None, :])
 
     input = input.view([n, c, h, w])
-    return F.interpolate(
-        input, size, mode="bicubic", align_corners=align_corners
-    )
+    return F.interpolate(input, size, mode="bicubic", align_corners=align_corners)
 
 
 class ReplaceGrad(torch.autograd.Function):
@@ -200,14 +155,7 @@ class PromptModule(nn.Module):
     def forward(self, input):
         input_normed = F.normalize(input.unsqueeze(1), dim=2)
         embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
-        dists = (
-            input_normed.sub(embed_normed)
-            .norm(dim=2)
-            .div(2)
-            .arcsin()
-            .pow(2)
-            .mul(2)
-        )
+        dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
         dists = dists * self.weight.sign()
         return (
             self.weight.abs()
@@ -256,9 +204,7 @@ class MakeCutouts(nn.Module):
             )
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
-            cutout = input[
-                :, :, offsety : offsety + size, offsetx : offsetx + size
-            ]
+            cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
             cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
         return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
 
@@ -269,10 +215,7 @@ def load_vqgan_model(config_path, checkpoint_path):
         model = vqgan.VQModel(**config.model.params)
         model.eval().requires_grad_(False)
         model.init_from_ckpt(checkpoint_path)
-    elif (
-        config.model.target
-        == "taming.models.cond_transformer.Net2NetTransformer"
-    ):
+    elif config.model.target == "taming.models.cond_transformer.Net2NetTransformer":
         parent_model = cond_transformer.Net2NetTransformer(**config.model.params)
         parent_model.eval().requires_grad_(False)
         parent_model.init_from_ckpt(checkpoint_path)
@@ -296,12 +239,8 @@ def generate(args):
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
     perceptor = (
-        clip.load(args.clip_model, jit=False)[0]
-        .eval()
-        .requires_grad_(False)
-        .to(device)
+        clip.load(args.clip_model, jit=False)[0].eval().requires_grad_(False).to(device)
     )
-
     cut_size = perceptor.visual.input_resolution
     e_dim = model.quantize.e_dim
     f = 2 ** (model.decoder.num_resolutions - 1)
@@ -309,12 +248,8 @@ def generate(args):
     n_toks = model.quantize.n_e
     toksX, toksY = args.size[0] // f, args.size[1] // f
     sideX, sideY = toksX * f, toksY * f
-    z_min = model.quantize.embedding.weight.min(dim=0).values[
-        None, :, None, None
-    ]
-    z_max = model.quantize.embedding.weight.max(dim=0).values[
-        None, :, None, None
-    ]
+    z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
+    z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
 
     if args.seed is not None:
         torch.manual_seed(args.seed)
@@ -322,9 +257,7 @@ def generate(args):
     if args.init_image:
         pil_image = Image.open(fetch(args.init_image)).convert("RGB")
         pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
-        z, *_ = model.encode(
-            TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1
-        )
+        z, *_ = model.encode(TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1)
     else:
         one_hot = F.one_hot(
             torch.randint(n_toks, [toksY * toksX], device=device), n_toks
@@ -342,35 +275,30 @@ def generate(args):
 
     prompt_modules = []
 
-    print(
-        f"using text prompt {args.prompts} and image prompt {args.image_prompts}"
-    )
+    print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
     for prompt in args.prompts:
         txt, weight, stop = parse_prompt(prompt)
         embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
-        prompt_modules.append(Prompt(embed, weight, stop).to(device))
+        prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
     for prompt in args.image_prompts:
         path, weight, stop = parse_prompt(prompt)
-        img = resize_image(
-            Image.open(fetch(path)).convert("RGB"), (sideX, sideY)
-        )
+        img = resize_image(Image.open(fetch(path)).convert("RGB"), (sideX, sideY))
         batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
         embed = perceptor.encode_image(normalize(batch)).float()
-        prompt_modules.append(Prompt(embed, weight, stop).to(device))
+
+        prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
     for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
         gen = torch.Generator().manual_seed(seed)
-        embed = torch.empty([1, perceptor.visual.output_dim]).normal_(
-            generator=gen
-        )
-        prompt_modules.append(Prompt(embed, weight).to(device))
+        embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
+        prompt_modules.append(PromptModule(embed, weight).to(device))
 
     def synth(z):
-        z_q = vector_quantize(
-            z.movedim(1, 3), model.quantize.embedding.weight
-        ).movedim(3, 1)
+        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(
+            3, 1
+        )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
     @torch.no_grad()
@@ -385,17 +313,6 @@ def generate(args):
     def ascend_txt(i: int):
         out = synth(z)
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
-
-
-        filename = f"results/{args.name}/{i:03}.png"
-        img = np.array(
-            out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8)
-        )[:, :, :]
-        img = np.transpose(img, (1, 2, 0))
-        imageio.imwrite(filename, np.array(img))
-
-
-
         result = []
         if args.init_weight:
             result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
@@ -404,6 +321,7 @@ def generate(args):
             result.append(prompt_module(iii))
 
         return result
+
 
     def train(i):
         opt.zero_grad()
@@ -417,14 +335,17 @@ def generate(args):
             z.copy_(z.maximum(z_min).minimum(z_max))
 
     i = 0
+    start = time.time()
     try:
         with tqdm() as pbar:
             for i in range(args.max_iterations):
+                print(time.time() - start)
                 train(i)
                 i += 1
                 pbar.update()
     except KeyboardInterrupt:
         pass
+
 
 class BetterNamespace:
     def __init__(self, **kwargs):
@@ -442,13 +363,15 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-
-    prompts=["what is a container? a miserable pile of secrets" , "the supposed lightweight, standalone, executable package of software is a miserable pile of secrets" , "retro video game"],
-    image_prompts=[],#"dracula.jpeg"],
+    prompts=[
+        "the ocean is on fire",
+        "an abstract painting by a talented artist",
+    ],
+    image_prompts=[],  # "dracula.jpeg"],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
     size=[780, 480],
-    init_image="logo_of_docker.png",
+    init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
     vqgan_config="vqgan_imagenet_f16_16384.yaml",
@@ -459,30 +382,48 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=0,
     max_iterations=200,
-    name="container"
+    name="container",
 )
 
+
 def parse_file_once(fname="prompts.json"):
-    prompts = json.load(open(fname))
-    current_prompt = prompts.pop(0)
+    with open(fname) as f:
+        prompts = json.load(f)
+    try:
+        current_prompt = prompts.pop(0)
+    except IndexError:
+        return False
     current_args = base_args.with_update(current_prompt)
 
-    name = current_prompt.get("init_image") or current_prompt["text"].replace(" ", "_")
-    directory = Path("results") / name
+    name = (
+        current_prompt.get("init_image")
+        or current_prompt["text"].replace(" ", "_")
+        or "no_name"
+    )
+    no_punctuation = re.sub(r"[^\w\s-]", "", name.lower())
+    slug = re.sub(r"[-\s]+", "-", no_punctuation).strip("-_")
+    directory = Path("./results") / slug
     try:
         os.mkdir(directory)
     except FileExistsError:
-        pass
+        print("dir already exists")
     generate(current_args)
-    for file in Path("steps").glob("*"):
-        shutil.move(file, directory)
-    finished = json.load(open("finished_prompts.json")) + [current_prompt]
+    try:
+        for file in Path("steps").glob("*"):
+            shutil.move(file, directory)
+    except FileNotFoundError:
+        print("file not found error moving")
+    try:
+        finished = json.load(open("finished_prompts.json")) + [current_prompt]
+    except FileNotFoundError:
+        finished = [current_prompt]
     json.dump(finished, open("finished_prompts.json", "w"), indent=4)
     json.dump(prompts, open(fname, "w"), indent=4)
 
+    return True
 
 
 if __name__ == "__main__":
-    generate(base_args)
+    while parse_file_once():
+        print("parsing next file")
 #    parse_file_once()
-

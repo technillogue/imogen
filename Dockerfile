@@ -1,8 +1,8 @@
 FROM ubuntu:hirsute as libbuilder
 WORKDIR /app
 RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST" > /etc/timezone
-RUN add-apt-repository universe && apt update
-RUN DEBIAN_FRONTEND="noninteractive" apt install -yy python3  python3-venv pipenv git
+#RUN add-apt-repository universe && apt update
+RUN DEBIAN_FRONTEND="noninteractive" apt update && apt install -yy python3  python3-venv pipenv git
 RUN git clone https://github.com/openai/CLIP                 
 RUN git clone https://github.com/CompVis/taming-transformers 
 RUN python3.9 -m venv /app/venv
