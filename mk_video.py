@@ -1,30 +1,39 @@
-def video(i):
-    init_frame = 1 #Este es el frame donde el vídeo empezará
-    last_frame = i #Puedes cambiar i a el número del último frame que quieres generar. It will raise an error if that number of frames does not exist.
+import os
+from subprocess import PIPE, Popen
+from tqdm.notebook import tqdm
+
+
+def video(i: int, root: str = "") -> None:
+    init_frame = 1005  # This is the frame where the video will start
+    last_frame = i  # You can change i to the number of the last frame you want to generate. It will raise an error if that number of frames does not exist.
 
     min_fps = 10
     max_fps = 30
 
-    total_frames = last_frame-init_frame
+    total_frames = last_frame - init_frame
 
-    length = 15 #Tiempo deseado del vídeo en segundos
+    length = 15  # Desired video time in seconds
 
-    frames = []
-    tqdm.write('Generando video...')
-    for i in range(init_frame,last_frame): #
-        filename = f"steps/{i:04}.png"
-        frames.append(Image.open(filename))
+    frames = [
+        Image.open(f"{root}/steps/{i:04}.png") for fname in sorted(os.listdir("steps"))
+    ]
+    # for a, b in zip(frames[:-1], frames[1:]):
+    #   # interpolate?
 
-    #fps = last_frame/10
-    fps = np.clip(total_frames/length,min_fps,max_fps)
+    total_frames = len(frames)
+    print("total frames: {total_frames}, fps: {fps}")
+    # fps = last_frame/10
+    fps = np.clip(total_frames / length, min_fps, max_fps)
 
-    from subprocess import Popen, PIPE
-    p = Popen(['ffmpeg', '-y', '-f', 'image2pipe', '-vcodec', 'png', '-r', str(fps), '-i', '-', '-vcodec', 'libx264', '-r', str(fps), '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryslow', 'video.mp4'], stdin=PIPE)
+    cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps} -pix_fmt yuv420p -crf 17 -preset veryslow video.mp4"
+    p = Popen(
+        cmd.split(" "),
+        stdin=PIPE,
+    )
     for im in tqdm(frames):
-        im.save(p.stdin, 'PNG')
+        im.save(p.stdin, "PNG")
     p.stdin.close()
 
-    print("El vídeo está siendo ahora comprimido, espera...")
+    print("The video is now being compressed, wait...")
     p.wait()
-    print("El vídeo está listo")
-
+    print("The video is ready")
