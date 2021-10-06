@@ -1,13 +1,15 @@
 #!/usr/bin/python3.8
-import warnings
-from typing import Any
-warnings.simplefilter("ignore")
-import sys
+
+# import warnings
+# warnings.simplefilter("ignore")
 import pdb
+import sys
+from typing import Any
+
 import imageio
 import kornia.augmentation as K
-import torch
 import numpy as np
+import torch
 from omegaconf import OmegaConf
 from PIL import Image, ImageFile
 from torch import Tensor, nn, optim
@@ -16,11 +18,11 @@ from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
+from CLIP import clip
+from image_utils import resample  # , resize_image
+
 sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
-
-from CLIP import clip
-from image_utils import resample #, resize_image
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -127,15 +129,17 @@ def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
 
 
 class Prompt(nn.Module):
-    def __init__(self, embed, weight=1.0, stop=float("-inf"), dwelt=0, tag=""):
+    def __init__(
+        self, embed: Tensor, weight=1.0, stop=float("-inf"), dwelt=0, tag=""
+    ) -> None:
         super().__init__()
-        # also add the text?
+        self.tag = tag
         self.dwelt = dwelt
         self.register_buffer("embed", embed)
         self.register_buffer("weight", torch.as_tensor(weight))
         self.register_buffer("stop", torch.as_tensor(stop))
 
-    def forward(self, input):
+    def forward(self, input: Tensor):
         input_normed = F.normalize(input.unsqueeze(1), dim=2)
         embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
         dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
@@ -147,7 +151,7 @@ class Prompt(nn.Module):
 
 
 def generate(args: "BetterNamespace") -> None:
-    device = torch.device("cpu") #"cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")  # "cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
@@ -182,8 +186,6 @@ def generate(args: "BetterNamespace") -> None:
         mean=[0.48145466, 0.4578275, 0.40821073],
         std=[0.26862954, 0.26130258, 0.27577711],
     )
-
-    prompt_modules = []
 
     print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
@@ -221,24 +223,23 @@ def generate(args: "BetterNamespace") -> None:
         # handle.update(img)
         # display.display(img)
 
-    def describe_prompt(text: str, prompt: Prompt) -> None:
-        print(f"{text}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
+    def describe_prompt(prompt: Prompt) -> None:
+        print(f"{prompt.tag}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
 
     def embed(text: str) -> Tensor:
         return perceptor.encode_text(clip.tokenize(text).to(device)).float()
 
-    prompt_queue = list(args.prompts)
-    first_text = prompt_queue.pop(0)
-    second_text = prompt_queue.pop(0)
-
     prompts = [
-        Prompt(embed(first_text), 1.0).to(device),
-        Prompt(embed(second_text), weight=0.0).to(device),
+        Prompt(embed(text), weight=weight, tag=text).to(device)
+        for weight, text in zip(rgs.prompts[:2], (1.0, 0.0))
     ]
+    prompt_queue = args.prompts[2:]
 
     @torch.no_grad()
-    def crossfade_prompts(prompts, fade=300, dwell=300) -> "list[Prompt]":
-        global first_text, second_text
+    def crossfade_prompts(
+        prompts: "list[Prompt]", fade=300, dwell=300
+    ) -> "list[Prompt]":
+        # realtime queue additions??
         # queue = open("queue").readlines()
         if prompts[0].dwelt < dwell:
             prompts[0].dwelt += 1
@@ -253,17 +254,14 @@ def generate(args: "BetterNamespace") -> None:
             prompts.pop(0)
             next_text = prompt_queue.pop(0)
             print("next text: ", next_text)
-            first_text, second_text = second_text, next_text
-            prompts.append(Prompt(embed(next_text), weight=0).to(device))
+            prompts.append(Prompt(embed(next_text), weight=0, tag=next_text).to(device))
         if i % args.display_freq == 0:
-            describe_prompt(first_text, prompts[0])
-            describe_prompt(second_text, prompts[1])
+            for prompt in prompts:
+                describe_prompt(prompt)
             print()
         return prompts
 
     def ascend_txt(i: int, z: Tensor) -> "list[float]":
-        # i: used for steps
-        # not sure if z is really a tensor or what
         out = synth(z)
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
 
@@ -336,11 +334,11 @@ base_args = BetterNamespace(
         "the ocean is on fire",
         "an abstract painting by a talented artist",
     ],
-    root=".", # change to a prompt slug
-    image_prompts=[],  # "dracula.jpeg"],
+    root=".",  # change to a prompt slug
+    image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
-    size=[100, 100], #[780//4, 480//4],
+    size=[780 // 4, 480 // 4],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -352,7 +350,6 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=0,
     max_iterations=200,
-    name="container",
     fade=100,  # @param {type:"number"}
     dwell=100,  # @param {type: "number"}
 )
