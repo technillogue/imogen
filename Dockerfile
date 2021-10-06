@@ -8,7 +8,6 @@ RUN git clone https://github.com/CompVis/taming-transformers
 RUN python3.9 -m venv /app/venv
 COPY pyproject.toml poetry.lock requirements.txt /app/
 RUN VIRTUAL_ENV=/app/venv pipenv install -r requirements.txt
-#RUN VIRTUAL_ENV=/app/venv pipenv run pip uninstall dataclasses -y
 
 FROM ubuntu:hirsute
 WORKDIR /app
@@ -19,6 +18,5 @@ RUN DEBIAN_FRONTEND="noninteractive" apt install -y python3
 #RUN apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
 
 COPY --from=libbuilder /app/venv/lib/python3/site-packages /app/taming-transformers /app/CLIP /app/
-# i understand that by copying data i include the secret key, which is bad
 COPY ./ganclip_functional.py ./finished_prompts.json ./prompts.json  /app/ 
 ENTRYPOINT ["/usr/bin/python3", "/app/ganclip_functional.py"]

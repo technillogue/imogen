@@ -1,27 +1,26 @@
 #!/usr/bin/python3.8
-import argparse
-import io
-
+import warnings
+from typing import Any
+warnings.simplefilter("ignore")
+import sys
+import pdb
 import imageio
 import kornia.augmentation as K
-import numpy as np
 import torch
-
-# from IPython import display
+import numpy as np
 from omegaconf import OmegaConf
 from PIL import Image, ImageFile
-
-sys.path.append("./taming-transformers")
-from taming.models import cond_transformer, vqgan
 from torch import Tensor, nn, optim
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
-# other image stuff?
+sys.path.append("./taming-transformers")
+from taming.models import cond_transformer, vqgan
+
 from CLIP import clip
-from image_utils import resample
+from image_utils import resample #, resize_image
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -61,7 +60,7 @@ class ClampWithGrad(torch.autograd.Function):
 clamp_with_grad = ClampWithGrad.apply
 
 
-def vector_quantize(x, codebook):
+def vector_quantize(x: Tensor, codebook: Tensor) -> Tensor:
     d = (
         x.pow(2).sum(dim=-1, keepdim=True)
         + codebook.pow(2).sum(dim=1)
@@ -88,7 +87,7 @@ class MakeCutouts(nn.Module):
         )
         self.noise_factor = 0.1
 
-    def forward(self, input):
+    def forward(self, input: Tensor) -> Tensor:
         sideY, sideX = input.shape[2:4]
         max_size = min(sideX, sideY)
         min_size = min(sideX, sideY, self.cut_size)
@@ -108,7 +107,8 @@ class MakeCutouts(nn.Module):
         return batch
 
 
-def load_vqgan_model(config_path, checkpoint_path):
+def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
+    # whatever
     config = OmegaConf.load(config_path)
     if config.model.target == "taming.models.vqgan.VQModel":
         model = vqgan.VQModel(**config.model.params)
@@ -122,19 +122,14 @@ def load_vqgan_model(config_path, checkpoint_path):
     else:
         raise ValueError(f"unknown model type: {config.model.target}")
     del model.loss
+    pdb.set_trace()
     return model
-
-
-def resize_image(image, out_size):
-    ratio = image.size[0] / image.size[1]
-    area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
-    size = round((area * ratio) ** 0.5), round((area / ratio) ** 0.5)
-    return image.resize(size, Image.LANCZOS)
 
 
 class Prompt(nn.Module):
     def __init__(self, embed, weight=1.0, stop=float("-inf"), dwelt=0, tag=""):
         super().__init__()
+        # also add the text?
         self.dwelt = dwelt
         self.register_buffer("embed", embed)
         self.register_buffer("weight", torch.as_tensor(weight))
@@ -151,8 +146,8 @@ class Prompt(nn.Module):
         )
 
 
-def generate(args):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+def generate(args: "BetterNamespace") -> None:
+    device = torch.device("cpu") #"cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
@@ -160,7 +155,7 @@ def generate(args):
         clip.load(args.clip_model, jit=False)[0].eval().requires_grad_(False).to(device)
     )
     cut_size = perceptor.visual.input_resolution
-    e_dim = model.quantize.e_dim
+    embedding_dimension = model.quantize.e_dim
     f = 2 ** (model.decoder.num_resolutions - 1)
     make_cutouts = MakeCutouts(cut_size, args.cutn, cut_pow=args.cut_pow)
     n_toks = model.quantize.n_e
@@ -169,23 +164,16 @@ def generate(args):
     z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
     z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
 
-
-if args.init_image:
-    pil_image = Image.open(args.init_image).convert("RGB")
-    pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
-    z, *_ = model.encode(TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1)
-else:
-    one_hot = F.one_hot(
-        torch.randint(n_toks, [toksY * toksX], device=device), n_toks
-    ).float()
-    if is_gumbel:
-        z = one_hot @ model.quantize.embed.weight
+    if args.init_image:
+        pil_image = Image.open(args.init_image).convert("RGB")
+        pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
+        z, *_ = model.encode(TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1)
     else:
         one_hot = F.one_hot(
             torch.randint(n_toks, [toksY * toksX], device=device), n_toks
         ).float()
-        z = one_hot @ model.quantize.embedding.weight
-        z = z.view([-1, toksY, toksX, e_dim]).permute(0, 3, 1, 2)
+    z = one_hot @ model.quantize.embedding.weight
+    z = z.view([-1, toksY, toksX, embedding_dimension]).permute(0, 3, 1, 2)
     z_orig = z.clone()
     z.requires_grad_(True)
     opt = optim.Adam([z], lr=args.step_size)
@@ -199,61 +187,57 @@ else:
 
     print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
-    for prompt in args.prompts:
-        txt, weight, stop = parse_prompt(prompt)
-        embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
-        prompt_modules.append(PromptModule(embed, weight, stop).to(device))
+    # for prompt in args.prompts:
+    #     txt, weight, stop = parse_prompt(prompt)
+    #     embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
+    #     prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
-    for prompt in args.image_prompts:
-        path, weight, stop = parse_prompt(prompt)
-        img = resize_image(Image.open(fetch(path)).convert("RGB"), (sideX, sideY))
-        batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
-        embed = perceptor.encode_image(normalize(batch)).float()
+    # for prompt in args.image_prompts:
+    #     path, weight, stop = parse_prompt(prompt)
+    #     img = resize_image(Image.open(fetch(path)).convert("RGB"), (sideX, sideY))
+    #     batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
+    #     embed = perceptor.encode_image(normalize(batch)).float()
 
-        prompt_modules.append(PromptModule(embed, weight, stop).to(device))
+    #     prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
-    for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
-        gen = torch.Generator().manual_seed(seed)
-        embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
-        prompt_modules.append(PromptModule(embed, weight).to(device))
+    # for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
+    #     gen = torch.Generator().manual_seed(seed)
+    #     embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
+    #     prompt_modules.append(PromptModule(embed, weight).to(device))
 
-    def synth(z):
+    def synth(z: Tensor) -> Tensor:
         z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(
             3, 1
         )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
+    @torch.no_grad()
+    def checkin(i: int, losses: "list[float]") -> None:
+        losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
+        tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
+        # out = synth(z)
+        # TF.to_pil_image(out[0].cpu()).save('progress.png')
+        # img = display.Image('progress.png')
+        # handle.update(img)
+        # display.display(img)
 
-@torch.no_grad()
-def checkin(i, losses):
-    losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
-    tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
-    # out = synth(z)
-    # TF.to_pil_image(out[0].cpu()).save('progress.png')
-    # img = display.Image('progress.png')
-    # handle.update(img)
-    # display.display(img)
+    def describe_prompt(text: str, prompt: Prompt) -> None:
+        print(f"{text}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
 
+    def embed(text: str) -> Tensor:
+        return perceptor.encode_text(clip.tokenize(text).to(device)).float()
 
-prompt_queue = list(texts)
-first_text = prompt_queue.pop(0)
-second_text = prompt_queue.pop(0)
+    prompt_queue = list(args.prompts)
+    first_text = prompt_queue.pop(0)
+    second_text = prompt_queue.pop(0)
 
-prompts = [
-    Prompt(embed(first_text), 1.0).to(device),
-    Prompt(embed(second_text), weight=0.0).to(device),
-]
-
-
-# csv?
-# text digest, weight, text
-
-
-def describe_prompt(text: str, prompt: Prompt) -> None:
-    print(f"{text}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
+    prompts = [
+        Prompt(embed(first_text), 1.0).to(device),
+        Prompt(embed(second_text), weight=0.0).to(device),
+    ]
 
     @torch.no_grad()
-    def crossfade_prompts(prompts, fade=300, dwell=300) -> list:
+    def crossfade_prompts(prompts, fade=300, dwell=300) -> "list[Prompt]":
         global first_text, second_text
         # queue = open("queue").readlines()
         if prompts[0].dwelt < dwell:
@@ -277,8 +261,9 @@ def describe_prompt(text: str, prompt: Prompt) -> None:
             print()
         return prompts
 
-    def ascend_txt():
-        global i
+    def ascend_txt(i: int, z: Tensor) -> "list[float]":
+        # i: used for steps
+        # not sure if z is really a tensor or what
         out = synth(z)
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
 
@@ -289,21 +274,24 @@ def describe_prompt(text: str, prompt: Prompt) -> None:
 
         for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
             result.append(prompt(iii))
+
+            # maybe we want to put this in a separate calculate_loss function
+            # that handles checking if we're fading?
+
         with torch.no_grad():
+            # how to profile this?
             img = np.array(
                 out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8)
             )[:, :, :]
             img = np.transpose(img, (1, 2, 0))
-            filename = f"{root}/steps/{i:04}.png"
+            filename = f"{args.root}/steps/{i:04}.png"
             imageio.imwrite(filename, np.array(img))
-            # img = display.Image(f"{root}/steps/{i:04}.png")
-            # handle.update(img)
 
         return result
 
     def train(i):
         opt.zero_grad()
-        lossAll = ascend_txt(i)
+        lossAll = ascend_txt(i, z)
         if i % args.display_freq == 0:
             checkin(i, lossAll)
         loss = sum(lossAll)
@@ -313,19 +301,34 @@ def describe_prompt(text: str, prompt: Prompt) -> None:
             z.copy_(z.maximum(z_min).minimum(z_max))
 
     i = 0
-    start = time.time()
     try:
-        with tqdm() as pbar:
-            try:
-                train(i)
-            except IndexError:
-                break
-            if i == max_iterations:
-                break
-            i += 1
-            pbar.update()
+        while 1:
+            with tqdm() as pbar:
+                try:
+                    train(i)
+                except IndexError:
+                    break
+                if i == args.max_iterations:
+                    break
+                i += 1
+                pbar.update()
     except KeyboardInterrupt:
         pass
+
+
+class BetterNamespace:
+    def __init__(self, **kwargs: Any) -> None:
+        self.mapping = kwargs
+
+    def __getattr__(self, attribute: str) -> Any:
+        if attribute == "prompts" and "text" in self.mapping:
+            return [self.mapping["text"]]
+        return self.mapping[attribute]
+
+    def with_update(self, other_dict: "dict[str, Any]") -> "BetterNamespace":
+        new_ns = BetterNamespace(**self.mapping)
+        new_ns.mapping.update(other_dict)
+        return new_ns
 
 
 base_args = BetterNamespace(
@@ -333,10 +336,11 @@ base_args = BetterNamespace(
         "the ocean is on fire",
         "an abstract painting by a talented artist",
     ],
+    root=".", # change to a prompt slug
     image_prompts=[],  # "dracula.jpeg"],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
-    size=[780, 480],
+    size=[100, 100], #[780//4, 480//4],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",

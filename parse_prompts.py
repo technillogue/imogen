@@ -1,8 +1,12 @@
-import imagegen
-
+#!/usr/bin/python3.8
 import json
 import sys
+import re
+import os
 from pathlib import Path
+from imagegen import generate, base_args
+
+
 def parse_file_once(fname="prompts.json"):
     with open(fname) as f:
         prompts = json.load(f)
@@ -14,7 +18,8 @@ def parse_file_once(fname="prompts.json"):
 
     name = (
         current_prompt.get("init_image")
-        or current_prompt["text"].replace(" ", "_")
+        or current_prompt.get("prompts", [""])[0]
+        or current_prompt.get("text", "").replace(" ", "_")
         or "no_name"
     )
     no_punctuation = re.sub(r"[^\w\s-]", "", name.lower())

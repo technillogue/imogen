@@ -4,14 +4,8 @@ from tqdm.notebook import tqdm
 
 
 def video(i: int, root: str = "") -> None:
-    init_frame = 1005  # This is the frame where the video will start
-    last_frame = i  # You can change i to the number of the last frame you want to generate. It will raise an error if that number of frames does not exist.
-
     min_fps = 10
     max_fps = 30
-
-    total_frames = last_frame - init_frame
-
     length = 15  # Desired video time in seconds
 
     frames = [
@@ -30,7 +24,8 @@ def video(i: int, root: str = "") -> None:
         cmd.split(" "),
         stdin=PIPE,
     )
-    for im in tqdm(frames):
+    for i, im in enumerate(tqdm(frames)):
+
         im.save(p.stdin, "PNG")
     p.stdin.close()
 
