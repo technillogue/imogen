@@ -6,14 +6,14 @@ echo "downloading clip..."
 #git clone https://github.com/openai/CLIP
 echo "downloading this other stuff"
 #git clone https://github.com/CompVis/taming-transformers
-pip install ftfy regex tqdm omegaconf pytorch-lightning torch 
-pip install kornia                                       
-pip install einops                                       
-#pip install pillow==7.1.2
-pip install imageio-ffmpeg 
+python3.9 -m pip install ftfy regex tqdm omegaconf pytorch-lightning torch
+python3.9 -m pip install kornia
+python3.9 -m pip install einops
+#python3.9 -m pip install pillow==7.1.2
+python3.9 -m pip install imageio-ffmpeg 
 #mkdir steps
-pip install torchvision
-pip install imageio
+python3.9 -m pip install torchvision
+python3.9 -m pip install imageio
 
 # if imagenet_1024:
 #   !curl -L -o vqgan_imagenet_f16_1024.yaml -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.yaml' #ImageNet 1024
