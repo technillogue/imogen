@@ -1,6 +1,6 @@
 #!/bin/bash
 # coding: utf-8
-
+set -o xtrace
 # get_ipython().system('nvidia-smi')
 echo "downloading clip..."
 git clone https://github.com/openai/CLIP                 
