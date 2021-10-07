@@ -17,7 +17,7 @@ sys.path.append("./taming-transformers")
 
 import requests
 import torch
-from IPython import display
+#from IPython import display
 from omegaconf import OmegaConf
 from PIL import Image
 from taming.models import cond_transformer, vqgan
@@ -310,7 +310,7 @@ def generate(args):
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
         TF.to_pil_image(out[0].cpu()).save("progress.png")
-        display.display(display.Image("progress.png"))
+        #display.display(display.Image("progress.png"))
 
     # def save_png(out)
     def ascend_txt(i: int):
@@ -341,11 +341,9 @@ def generate(args):
             z.copy_(z.maximum(z_min).minimum(z_max))
 
     i = 0
-    start = time.time()
     try:
         with tqdm() as pbar:
             for i in range(args.max_iterations):
-                print(time.time() - start)
                 train(i)
                 i += 1
                 pbar.update()
