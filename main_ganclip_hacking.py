@@ -1,6 +1,7 @@
 #!/usr/bin/python3.8
 # coding: utf-8
 import io
+import pdb
 import json
 
 # import argparse
@@ -234,6 +235,7 @@ def resize_image(image, out_size):
 
 
 def generate(args):
+    #device = torch.device("cpu")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
@@ -279,6 +281,7 @@ def generate(args):
 
     for prompt in args.prompts:
         txt, weight, stop = parse_prompt(prompt)
+        print(txt)
         embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
         prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
@@ -312,12 +315,15 @@ def generate(args):
     # def save_png(out)
     def ascend_txt(i: int):
         out = synth(z)
+        pdb.set_trace()
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
         result = []
         if args.init_weight:
             result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
         for prompt_module in prompt_modules:
+            import psb
+            pdb.set_trace()
             result.append(prompt_module(iii))
 
         return result
@@ -368,7 +374,7 @@ base_args = BetterNamespace(
     image_prompts=[],  # "dracula.jpeg"],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
-    size=[780, 480],
+    size=[50,50], #[780, 480],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -422,6 +428,7 @@ def parse_file_once(fname="prompts.json"):
 
 
 if __name__ == "__main__":
+    #generate(base_args)
     while parse_file_once():
         print("parsing next file")
 #    parse_file_once()
