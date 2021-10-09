@@ -3,14 +3,17 @@
 set -o xtrace
 # get_ipython().system('nvidia-smi')
 echo "downloading clip..."
-#git clone https://github.com/openai/CLIP
+git clone https://github.com/openai/CLIP
 echo "downloading this other stuff"
+
 #git clone https://github.com/CompVis/taming-transformers
 python3.9 -m pip install ftfy regex tqdm omegaconf pytorch-lightning torch
 python3.9 -m pip install kornia
 python3.9 -m pip install einops
 #python3.9 -m pip install pillow==7.1.2
 python3.9 -m pip install imageio-ffmpeg 
+
+
 #mkdir steps
 python3.9 -m pip install torchvision
 python3.9 -m pip install imageio
@@ -18,8 +21,8 @@ python3.9 -m pip install imageio
 # if imagenet_1024:
 #   !curl -L -o vqgan_imagenet_f16_1024.yaml -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.yaml' #ImageNet 1024
 #   !curl -L -o vqgan_imagenet_f16_1024.ckpt -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.ckpt'  #ImageNet 1024
-#curl -L -o vqgan_imagenet_f16_16384.yaml -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.yaml' #ImageNet 16384
-#curl -L -o vqgan_imagenet_f16_16384.ckpt -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.ckpt' #ImageNet 16384
+curl -L -o vqgan_imagenet_f16_16384.yaml -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.yaml' #ImageNet 16384
+curl -L -o vqgan_imagenet_f16_16384.ckpt -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_16384.ckpt' #ImageNet 16384
 # if coco:
 #   !curl -L -o coco.yaml -C - 'https://dl.nmkd.de/ai/clip/coco/coco.yaml' #COCO
 #   !curl -L -o coco.ckpt -C - 'https://dl.nmkd.de/ai/clip/coco/coco.ckpt' #COCO
