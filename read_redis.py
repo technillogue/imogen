@@ -6,6 +6,7 @@ import redis
 import requests
 import main_ganclip_hacking as clipart
 
+requests.post("https://imogen.fly.dev/admin", query={"message": "starting read_redis"})
 url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
@@ -16,6 +17,7 @@ while 1:
         time.sleep(60)
         item = r.lindex("prompt_queue", 0)
         if not item:
+            requests.post("https://imogen.fly.dev/admin", query={"message": "powering down worker"})
             subprocess.run(["sudo", "poweroff"])
     blob = json.loads(item)
     args = clipart.base_args.with_update({"text": blob["prompt"], "max_iterations": 50})
