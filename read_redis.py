@@ -1,9 +1,13 @@
+import time
+import json
+import subprocess
+
 import redis
 import requests
 import main_ganclip_hacking as clipart
 
 url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
-password, rest = url.lstrip("redis://:").split("@")
+password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=port, password=password)
 while 1:
@@ -18,6 +22,5 @@ while 1:
     print(args)
     clipart.generate(args)
     f = open("progress.png", mode="rb").read()
-    requests.post("https://imogen.fly.dev/attachment/{blob['callback']}", query={"message": blob["prompt"}, files={"image": f})
-    r.lrem(item, 1)
-
+    requests.post(f"https://imogen.fly.dev/attachment/{blob['callback']}", query={"message": blob["prompt"]}, files={"image": f})
+    r.lrem("prompt_queue", item, 1)
