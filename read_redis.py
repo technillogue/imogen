@@ -6,7 +6,11 @@ import redis
 import requests
 import main_ganclip_hacking as clipart
 
-requests.post("https://imogen.fly.dev/admin", query={"message": "starting read_redis"})
+signal_url = "https://fast-vampirebat-51.loca.lt"
+old_url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
+requests.post(f"{signal_url}/admin", query={"message": "starting read_redis"})
+
+
 url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
@@ -17,12 +21,12 @@ while 1:
         time.sleep(60)
         item = r.lindex("prompt_queue", 0)
         if not item:
-            requests.post("https://imogen.fly.dev/admin", query={"message": "powering down worker"})
+            requests.post(f"{signal_url}/admin", query={"message": "powering down worker"})
             subprocess.run(["sudo", "poweroff"])
     blob = json.loads(item)
     args = clipart.base_args.with_update({"text": blob["prompt"], "max_iterations": 50})
     print(args)
     clipart.generate(args)
     f = open("progress.png", mode="rb").read()
-    requests.post(f"https://imogen.fly.dev/attachment/{blob['callback']}", query={"message": blob["prompt"]}, files={"image": f})
+    requests.post(f"{signal_url}/attachment/{blob['callback']}", query={"message": blob["prompt"]}, files={"image": f})
     r.lrem("prompt_queue", item, 1)
