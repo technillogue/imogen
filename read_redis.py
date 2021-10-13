@@ -7,7 +7,8 @@ import requests
 import main_ganclip_hacking as clipart
 
 requests.post("https://imogen.fly.dev/admin", params={"message": "starting read_redis"})
-url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
+url = "redis://:ImVqcG9uMTc2OHA2cWRncjQie92871a0d1480b7ebe533d1861ed27b7ca8590bc@imogen.redis.fly.io:10079"
+
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=port, password=password)
