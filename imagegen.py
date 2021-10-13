@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#!/usr/bin/python3.9
 
 # import warnings
 # warnings.simplefilter("ignore")
@@ -19,7 +19,7 @@ from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
 from CLIP import clip
-from image_utils import resample  # , resize_image
+from utils import resample  # , resize_image
 
 sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
@@ -124,7 +124,6 @@ def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
     else:
         raise ValueError(f"unknown model type: {config.model.target}")
     del model.loss
-    pdb.set_trace()
     return model
 
 
@@ -151,7 +150,7 @@ class Prompt(nn.Module):
 
 
 def generate(args: "BetterNamespace") -> None:
-    device = torch.device("cpu")  # "cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
@@ -231,7 +230,7 @@ def generate(args: "BetterNamespace") -> None:
 
     prompts = [
         Prompt(embed(text), weight=weight, tag=text).to(device)
-        for weight, text in zip(rgs.prompts[:2], (1.0, 0.0))
+        for weight, text in zip(args.prompts[:2], (1.0, 0.0))
     ]
     prompt_queue = args.prompts[2:]
 

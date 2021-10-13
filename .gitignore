@@ -1,3 +1,5 @@
 .idea
 .ipynb_checkpoints
 __pycache__
+vqgan_imagenet_f16_16384.ckpt
+vqgan_imagenet_f16_16384.yaml
