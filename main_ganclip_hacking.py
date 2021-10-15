@@ -1,10 +1,8 @@
 #!/usr/bin/python3.9
-# coding: utf-8
 import io
 import pdb
 import json
-
-# import argparse
+import pdb
 import math
 import os
 import re
@@ -12,6 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 import time
+import logging
 
 sys.path.append("./taming-transformers")
 
@@ -19,6 +18,7 @@ import requests
 import torch
 import numpy as np
 import imageio
+
 # from IPython import display
 from omegaconf import OmegaConf
 from PIL import Image
@@ -30,36 +30,6 @@ from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
 from CLIP import clip
-
-# In[14]:
-
-
-def setup() -> None:
-    print("nvidia-smi")
-
-    # In[ ]:
-    target_buffer = open("/dev/stdout")  # could be a pipe or subproc input
-    print("git clone https://github.com/openai/CLIP")
-    print("git clone https://github.com/CompVis/taming-transformers")
-    print(
-        "pip install ftfy regex tqdm omegaconf pytorch-lightning einops transformers"
-    )
-    print("pip install -e ./taming-transformers")
-
-    use_smaller_imagenet = False
-    if use_smaller_imagenet:
-        print(
-            "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' > vqgan_imagenet_f16_1024.yaml"
-        )
-        print(
-            "curl -L 'https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/?p=%2Fckpts%2Flast.ckpt&dl=1' > vqgan_imagenet_f16_1024.ckpt"
-        )
-    print(
-        "curl -L 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fconfigs%2Fmodel.yaml&dl=1' > vqgan_imagenet_f16_16384.yaml"
-    )
-    print(
-        "curl -L 'https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=%2Fckpts%2Flast.ckpt&dl=1' > vqgan_imagenet_f16_16384.ckpt"
-    )
 
 
 def sinc(x):
@@ -151,6 +121,7 @@ def vector_quantize(x, codebook):
     )
     indices = d.argmin(-1)
     x_q = F.one_hot(indices, codebook.shape[0]).to(d.dtype) @ codebook
+
     return replace_grad(x_q, x)
 
 
@@ -257,7 +228,7 @@ def resize_image(image, out_size):
 def generate(args):
     # device = torch.device("cpu")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
+    logging.info("Using device:", device)
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
     perceptor = (
@@ -306,12 +277,13 @@ def generate(args):
 
     prompt_modules = []
 
-    print(
+    logging.info(
         f"using text prompt {args.prompts} and image prompt {args.image_prompts}"
     )
 
     for prompt in args.prompts:
         txt, weight, stop = parse_prompt(prompt)
+        logging.info(txt)
         print(txt)
         embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
         prompt_modules.append(PromptModule(embed, weight, stop).to(device))
@@ -344,32 +316,23 @@ def generate(args):
         losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
-        TF.to_pil_image(out[0].cpu()).save("progress.png")
+        TF.to_pil_image(out[0].cpu()).save("progress.jpg")
         # display.display(display.Image("progress.png"))
 
-    args
-    # def save_png(out)
+    folder = args.prompts[0].replace(" ", "_")
     def ascend_txt(i: int):
         out = synth(z)
-        #        pdb.set_trace()
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
         result = []
         if args.init_weight:
             result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
         for prompt_module in prompt_modules:
-            #            pdb.set_trace()
             result.append(prompt_module(iii))
-
-        with torch.no_grad():
-            # how to profile this?
-            img = np.array(
-                out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8)
-            )[:, :, :]
-            img = np.transpose(img, (1, 2, 0))
-            folder = args.prompts[0].replace(" ", "_")
-            filename = f"{folder}/steps/{i:04}.png"
-            imageio.imwrite(filename, np.array(img))
+        if args.video:
+            with torch.no_grad():
+                # how to profile this?
+                TF.to_pil_image(out[0].cpu()).save(f"{folder}/steps/{i:04}.jpg")
         return result
 
     def train(i):
@@ -385,7 +348,7 @@ def generate(args):
 
     folder = args.prompts[0].replace(" ", "_")
     try:
-        (Path(folder) / "steps" ).mkdir(parents=True, exist_ok=True)
+        (Path(folder) / "steps").mkdir(parents=True, exist_ok=True)
     except FileExistsError:
         pass
     i = 0
@@ -415,10 +378,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=[
-        "the ocean is on fire",
-        "an abstract painting by a talented artist",
-    ],
+    prompts=["the ocean is on fire"],
     image_prompts=[],  # "dracula.jpeg"],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
@@ -433,8 +393,9 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=20,
     seed=0,
-    max_iterations=350,
+    max_iterations=50,
     name="container",
+    video=False,
 )
 
 
@@ -458,13 +419,13 @@ def parse_file_once(fname="prompts.json"):
     try:
         os.mkdir(directory)
     except FileExistsError:
-        print("dir already exists")
+        logging.info("dir already exists")
     generate(current_args)
     try:
         for file in Path("steps").glob("*"):
             shutil.move(file, directory)
     except FileNotFoundError:
-        print("file not found error moving")
+        logging.info("file not found error moving")
     try:
         finished = json.load(open("finished_prompts.json")) + [current_prompt]
     except FileNotFoundError:
@@ -478,5 +439,5 @@ def parse_file_once(fname="prompts.json"):
 if __name__ == "__main__":
     # generate(base_args)
     while parse_file_once():
-        print("parsing next file")
+        logging.info("parsing next file")
 #    parse_file_once()
