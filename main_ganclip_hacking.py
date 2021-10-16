@@ -317,6 +317,7 @@ def generate(args):
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
         TF.to_pil_image(out[0].cpu()).save("progress.jpg")
+        shutil.copy("progress.jpg", f"{folder}/{folder}.jpg")
         # display.display(display.Image("progress.png"))
 
     folder = args.prompts[0].replace(" ", "_")
@@ -391,7 +392,7 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
-    display_freq=20,
+    display_freq=100,
     seed=0,
     max_iterations=50,
     name="container",
