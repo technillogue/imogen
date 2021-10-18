@@ -317,10 +317,11 @@ def generate(args):
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
         TF.to_pil_image(out[0].cpu()).save("progress.jpg")
-        shutil.copy("progress.jpg", f"{folder}/{folder}.jpg")
+        shutil.copy("progress.jpg", f"output/{folder}/{folder}.jpg")
         # display.display(display.Image("progress.png"))
 
     folder = args.prompts[0].replace(" ", "_")
+
     def ascend_txt(i: int):
         out = synth(z)
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
@@ -333,7 +334,9 @@ def generate(args):
         if args.video:
             with torch.no_grad():
                 # how to profile this?
-                TF.to_pil_image(out[0].cpu()).save(f"{folder}/steps/{i:04}.jpg")
+                TF.to_pil_image(out[0].cpu()).save(
+                    f"output/{folder}/steps/{i:04}.jpg"
+                )
         return result
 
     def train(i):
@@ -349,7 +352,7 @@ def generate(args):
 
     folder = args.prompts[0].replace(" ", "_")
     try:
-        (Path(folder) / "steps").mkdir(parents=True, exist_ok=True)
+        (Path("output") / folder / "steps").mkdir(parents=True, exist_ok=True)
     except FileExistsError:
         pass
     i = 0
