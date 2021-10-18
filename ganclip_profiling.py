@@ -46,19 +46,21 @@ def lanczos(x, a):
 
 def ramp(ratio: float, width: int, device: torch.device) -> Tensor:
     n = math.ceil(width / ratio + 1)
-    out = torch.empty([n], device=device)
+    out = torch.empty([n] , device=device)
     cur = 0.0
     for i in range(out.shape[0]):
         out[i] = cur
         cur += ratio
     return torch.cat([-out[1:].flip([0]), out])[1:-1]
 
+
 tensor_to_counter = 0
+
 
 def resample(input, size, align_corners=True):
     global tensor_to_counter
-    n, c, h, w = input.shape 
-    dh, dw = size # [224, 224]
+    n, c, h, w = input.shape
+    dh, dw = size  # [224, 224]
 
     input = input.view([n * c, 1, h, w])
     # [3, 1, 351, 351]
@@ -66,19 +68,19 @@ def resample(input, size, align_corners=True):
         # code path taken
         kernel_h = lanczos(ramp(dh / h, 2, input.device), 2)
         # that's float32 [7] being casted to the same thing on the same device
-        if kernel_h.dtype != input.dtype or kernel_h.device != input.device:
-            tensor_to_counter += 1
-            kernel_h = kernel_h.to(input.device, input.dtype)
+        # if kernel_h.dtype != input.dtype or kernel_h.device != input.device:
+        #     tensor_to_counter += 1
+        #     kernel_h = kernel_h.to(input.device, input.dtype)
         pad_h = (kernel_h.shape[0] - 1) // 2
         input = F.pad(input, (0, 0, pad_h, pad_h), "reflect")
         input = F.conv2d(input, kernel_h[None, None, :, None])
 
     if dw < w:
-        kernel_w = lanczos(ramp(dw / w, 2, input.device), 2).to(input.device, input.dtype)
-        if kernel_w.dtype != input.dtype or kernel_w.device != input.device:
-            tensor_to_counter += 1
-            print(kernel_w.dtype, kernel_w.device, input.dtype, input.device)
-            kernel_w = kernel_w.to(input.device, input.dtype)
+        kernel_w = lanczos(ramp(dw / w, 2, input.device), 2)
+        # if kernel_w.dtype != input.dtype or kernel_w.device != input.device:
+        #     tensor_to_counter += 1
+        #     print(kernel_w.dtype, kernel_w.device, input.dtype, input.device)
+        #     kernel_w = kernel_w.to(input.device, input.dtype)
         pad_w = (kernel_w.shape[0] - 1) // 2
         input = F.pad(input, (pad_w, pad_w, 0, 0), "reflect")
         input = F.conv2d(input, kernel_w[None, None, None, :])
@@ -193,7 +195,7 @@ class MakeCutouts(nn.Module):
 
     def forward(self, input):
         # input is float32 [1,3,480,768]
-        # output is...float32 [64,3,224,224] 
+        # output is...float32 [64,3,224,224]
         sideY, sideX = input.shape[2:4]
         max_size = min(sideX, sideY)
         min_size = min(sideX, sideY, self.cut_size)
@@ -206,9 +208,9 @@ class MakeCutouts(nn.Module):
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[
                 :, :, offsety : offsety + size, offsetx : offsetx + size
-            ] # float32 grad_fn=SliceBackward [1,3,261,261]
+            ]  # float32 grad_fn=SliceBackward [1,3,261,261]
             cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
-            # cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
+            #cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
             # float32 grad_fn=UpsampleBicubic2DBackword1 [1, 3, 224, 224]
         return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
 
@@ -336,6 +338,7 @@ def generate(args):
         # display.display(display.Image("progress.png"))
 
     folder = args.prompts[0].replace(" ", "_")
+
     def ascend_txt(i: int):
         out = synth(z)
         # out: float32 [1,3,480,768]
