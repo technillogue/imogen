@@ -179,6 +179,15 @@ class MakeCutouts(nn.Module):
         self.cut_size = cut_size
         self.cutn = cutn
         self.cut_pow = cut_pow
+        self.augs = nn.Sequential(
+            K.RandomHorizontalFlip(p=0.5),
+            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            K.RandomSharpness(0.3, p=0.4),
+            K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode="border"),
+            K.RandomPerspective(0.2, p=0.4),
+            K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
+        )
+        self.noise_factor = 0.1
 
     def forward(self, input):
         sideY, sideX = input.shape[2:4]

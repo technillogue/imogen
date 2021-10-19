@@ -1,4 +1,5 @@
-import ganclip_profiling as clipart
+#!/bin/python3.9
+import noresample as clipart
 
 clipart.generate(
     clipart.base_args.with_update(

@@ -20,6 +20,7 @@ import numpy as np
 import imageio
 
 # from IPython import display
+import kornia.augmentation as K
 from omegaconf import OmegaConf
 from PIL import Image
 from taming.models import cond_transformer, vqgan
@@ -188,8 +189,17 @@ class MakeCutouts(nn.Module):
         self.cut_size = cut_size
         self.cutn = cutn
         self.cut_pow = cut_pow
+        self.augs = nn.Sequential(
+            K.RandomHorizontalFlip(p=0.5),
+            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            K.RandomSharpness(0.3, p=0.4),
+            K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode="border"),
+            K.RandomPerspective(0.2, p=0.4),
+            K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
+        )
+        self.noise_factor = 0.1
 
-    def forward(self, input):
+    def forward(self, input: Tensor) -> Tensor:
         # input is float32 [1,3,480,768]
         # output is...float32 [64,3,224,224]
         sideY, sideX = input.shape[2:4]
@@ -197,20 +207,24 @@ class MakeCutouts(nn.Module):
         min_size = min(sideX, sideY, self.cut_size)
         cutouts = []
         for _ in range(self.cutn):
-            size = int(
-                torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
-            )
-            size = 224
+            # size = int(
+            #     torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
+            # )
+            size = self.cut_size
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
-            cutout = input[
-                :, :, offsety : offsety + size, offsetx : offsetx + size
-            ]  # float32 grad_fn=SliceBackward [1,3,261,261]
-
-            #cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
-            #cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
+            cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+            #sampled = resample(cutout, (self.cut_size, self.cut_size))
+            cutouts.append(cutout)
+            # float32 grad_fn=SliceBackward [1,3,261,261]
+            # cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
+            cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
             # float32 grad_fn=UpsampleBicubic2DBackword1 [1, 3, 224, 224]
-        return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
+        batch = self.augs(torch.cat(cutouts, dim=0))
+        if self.noise_factor:
+            facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_factor)
+            batch = batch + facs * torch.randn_like(batch)
+        return batch
 
 
 def load_vqgan_model(config_path, checkpoint_path):

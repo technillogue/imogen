@@ -101,7 +101,6 @@ class MakeCutouts(nn.Module):
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-            pdb.set_trace()
             sampled = resample(cutout, (self.cut_size, self.cut_size))
             cutouts.append(sampled)
         batch = self.augs(torch.cat(cutouts, dim=0))
@@ -264,7 +263,6 @@ def generate(args: "BetterNamespace") -> None:
 
     def ascend_txt(i: int, z: Tensor) -> "list[float]":
         out = synth(z)
-        pdb.set_trace()
         cutouts = make_cutouts(out)
         iii = perceptor.encode_image(normalize(cutouts)).float()
 
