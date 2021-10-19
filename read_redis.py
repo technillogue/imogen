@@ -58,7 +58,7 @@ while 1:
         continue
     try:
         settings = json.loads(blob["prompt"])
-        assert isinstance(settings, dict) 
+        assert isinstance(settings, dict)
         args = clipart.base_args.with_update(settings)
     except (json.JSONDecodeError, AssertionError):
         args = clipart.base_args.with_update(
@@ -77,7 +77,9 @@ while 1:
         files={"image": f},
     )
     r.lrem("prompt_queue", 1, item)
-    media = twitter_api.request("media/upload", None, {"media": open("progress.jpg", mode="rb").read()}).json()
+    media = twitter_api.request(
+        "media/upload", None, {"media": open("progress.jpg", mode="rb").read()}
+    ).json()
     media_id = media["media_id"]
     post = {
         "status": blob["prompt"],

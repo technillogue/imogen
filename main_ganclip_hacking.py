@@ -33,9 +33,7 @@ from CLIP import clip
 
 
 def sinc(x):
-    return torch.where(
-        x != 0, torch.sin(math.pi * x) / (math.pi * x), x.new_ones([])
-    )
+    return torch.where(x != 0, torch.sin(math.pi * x) / (math.pi * x), x.new_ones([]))
 
 
 def lanczos(x, a):
@@ -73,9 +71,7 @@ def resample(input, size, align_corners=True):
         input = F.conv2d(input, kernel_w[None, None, None, :])
 
     input = input.view([n, c, h, w])
-    return F.interpolate(
-        input, size, mode="bicubic", align_corners=align_corners
-    )
+    return F.interpolate(input, size, mode="bicubic", align_corners=align_corners)
 
 
 class ReplaceGrad(torch.autograd.Function):
@@ -135,14 +131,7 @@ class PromptModule(nn.Module):
     def forward(self, input):
         input_normed = F.normalize(input.unsqueeze(1), dim=2)
         embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
-        dists = (
-            input_normed.sub(embed_normed)
-            .norm(dim=2)
-            .div(2)
-            .arcsin()
-            .pow(2)
-            .mul(2)
-        )
+        dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
         dists = dists * self.weight.sign()
         return (
             self.weight.abs()
@@ -179,23 +168,36 @@ class MakeCutouts(nn.Module):
         self.cut_size = cut_size
         self.cutn = cutn
         self.cut_pow = cut_pow
+        self.augs = nn.Sequential(
+            K.RandomHorizontalFlip(p=0.5),
+            # K.RandomSolarize(0.01, 0.01, p=0.7),
+            K.RandomSharpness(0.3, p=0.4),
+            K.RandomAffine(degrees=30, translate=0.1, p=0.8, padding_mode="border"),
+            K.RandomPerspective(0.2, p=0.4),
+            K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
+        )
+        self.noise_factor = 0.1
 
-    def forward(self, input):
-        sideY, sideX = input.shape[2:4]
-        max_size = min(sideX, sideY)
-        min_size = min(sideX, sideY, self.cut_size)
-        cutouts = []
-        for _ in range(self.cutn):
-            size = int(
-                torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
-            )
-            offsetx = torch.randint(0, sideX - size + 1, ())
-            offsety = torch.randint(0, sideY - size + 1, ())
-            cutout = input[
-                :, :, offsety : offsety + size, offsetx : offsetx + size
-            ]
-            cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
-        return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
+        def forward(self, input):
+            sideY, sideX = input.shape[2:4]
+            max_size = min(sideX, sideY)
+            min_size = min(sideX, sideY, self.cut_size)
+            cutouts = []
+            for _ in range(self.cutn):
+                size = int(
+                    torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
+                )
+                offsetx = torch.randint(0, sideX - size + 1, ())
+                offsety = torch.randint(0, sideY - size + 1, ())
+                cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+                cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
+            batch = self.augs(torch.cat(cutouts, dim=0))
+            if self.noise_factor:
+                facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(
+                    0, self.noise_factor
+                )
+                batch = batch + facs * torch.randn_like(batch)
+            return clamp_with_grad(batch, 0, 1)
 
 
 def load_vqgan_model(config_path, checkpoint_path):
@@ -204,10 +206,7 @@ def load_vqgan_model(config_path, checkpoint_path):
         model = vqgan.VQModel(**config.model.params)
         model.eval().requires_grad_(False)
         model.init_from_ckpt(checkpoint_path)
-    elif (
-        config.model.target
-        == "taming.models.cond_transformer.Net2NetTransformer"
-    ):
+    elif config.model.target == "taming.models.cond_transformer.Net2NetTransformer":
         parent_model = cond_transformer.Net2NetTransformer(**config.model.params)
         parent_model.eval().requires_grad_(False)
         parent_model.init_from_ckpt(checkpoint_path)
@@ -232,10 +231,7 @@ def generate(args):
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
     perceptor = (
-        clip.load(args.clip_model, jit=False)[0]
-        .eval()
-        .requires_grad_(False)
-        .to(device)
+        clip.load(args.clip_model, jit=False)[0].eval().requires_grad_(False).to(device)
     )
     cut_size = perceptor.visual.input_resolution
     e_dim = model.quantize.e_dim
@@ -244,12 +240,8 @@ def generate(args):
     n_toks = model.quantize.n_e
     toksX, toksY = args.size[0] // f, args.size[1] // f
     sideX, sideY = toksX * f, toksY * f
-    z_min = model.quantize.embedding.weight.min(dim=0).values[
-        None, :, None, None
-    ]
-    z_max = model.quantize.embedding.weight.max(dim=0).values[
-        None, :, None, None
-    ]
+    z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
+    z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
 
     if args.seed is not None:
         torch.manual_seed(args.seed)
@@ -257,9 +249,7 @@ def generate(args):
     if args.init_image:
         pil_image = Image.open(fetch(args.init_image)).convert("RGB")
         pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
-        z, *_ = model.encode(
-            TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1
-        )
+        z, *_ = model.encode(TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1)
     else:
         one_hot = F.one_hot(
             torch.randint(n_toks, [toksY * toksX], device=device), n_toks
@@ -290,9 +280,7 @@ def generate(args):
 
     for prompt in args.image_prompts:
         path, weight, stop = parse_prompt(prompt)
-        img = resize_image(
-            Image.open(fetch(path)).convert("RGB"), (sideX, sideY)
-        )
+        img = resize_image(Image.open(fetch(path)).convert("RGB"), (sideX, sideY))
         batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
         embed = perceptor.encode_image(normalize(batch)).float()
 
@@ -300,15 +288,13 @@ def generate(args):
 
     for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
         gen = torch.Generator().manual_seed(seed)
-        embed = torch.empty([1, perceptor.visual.output_dim]).normal_(
-            generator=gen
-        )
+        embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
         prompt_modules.append(PromptModule(embed, weight).to(device))
 
     def synth(z):
-        z_q = vector_quantize(
-            z.movedim(1, 3), model.quantize.embedding.weight
-        ).movedim(3, 1)
+        z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(
+            3, 1
+        )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
     @torch.no_grad()
@@ -317,10 +303,11 @@ def generate(args):
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
         TF.to_pil_image(out[0].cpu()).save("progress.jpg")
-        shutil.copy("progress.jpg", f"{folder}/{folder}.jpg")
+        shutil.copy("progress.jpg", f"output/{folder}/{folder}.jpg")
         # display.display(display.Image("progress.png"))
 
     folder = args.prompts[0].replace(" ", "_")
+
     def ascend_txt(i: int):
         out = synth(z)
         iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
@@ -333,7 +320,7 @@ def generate(args):
         if args.video:
             with torch.no_grad():
                 # how to profile this?
-                TF.to_pil_image(out[0].cpu()).save(f"{folder}/steps/{i:04}.jpg")
+                TF.to_pil_image(out[0].cpu()).save(f"output/{folder}/steps/{i:04}.jpg")
         return result
 
     def train(i):
@@ -349,7 +336,7 @@ def generate(args):
 
     folder = args.prompts[0].replace(" ", "_")
     try:
-        (Path(folder) / "steps").mkdir(parents=True, exist_ok=True)
+        (Path("output") / folder / "steps").mkdir(parents=True, exist_ok=True)
     except FileExistsError:
         pass
     i = 0
