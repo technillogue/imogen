@@ -34,10 +34,11 @@ from CLIP import clip
 
 
 versions = {
+    "0.2.2": "0.2.2-lanczos",
     "0.2.1": "0.2.1-truncate-pooling-no-augs",
     "0.2": "0.2-pooling-no-augs",  # adaptive_avg_pool2d no augmentations but they shouldn't have been on anyway i think
 }
-version = versions["0.2.1"]
+version = versions["0.2.2"]
 
 
 def sinc(x):
@@ -60,9 +61,9 @@ def ramp(ratio, width):
     return torch.cat([-out[1:].flip([0]), out])[1:-1]
 
 
-def resample(input, size, align_corners=True):
+def resample(input, size: int, align_corners=True):
     n, c, h, w = input.shape
-    dh, dw = size
+    dh =  dw = size
 
     input = input.view([n * c, 1, h, w])
 
@@ -186,8 +187,11 @@ class MakeCutouts(nn.Module):
         )
         self.noise_factor = 0.1
         if args.resample_method == "pool":
-            self.resample_function =  F.adaptive_avg_pool2d
-
+            print("using adaptive_avg_pool2d resampling")
+            self.resample_function = F.adaptive_avg_pool2d
+        else:
+            print("using lanczos/bicubic resampling")
+            self.resample_function = resample
 
     def forward(self, input):
         sideY, sideX = input.shape[2:4]
@@ -201,8 +205,8 @@ class MakeCutouts(nn.Module):
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-
-            cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
+            resampled = self.resample_function(cutout, self.cut_size)
+            cutouts.append(resampled)
         return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
         # batch = self.augs(torch.cat(cutouts, dim=0))
         # if self.noise_factor:
@@ -344,7 +348,6 @@ def generate(args):
             result.append(prompt_module(iii))
         if args.video:
             with torch.no_grad():
-                # how to profile this?
                 TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.jpg")
         return result
 
@@ -397,14 +400,15 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
-    resample_method="pool",
+    resample_method="lanczos",
     display_freq=100,
     seed=0,
     max_iterations=201,
     name="container",
     video=False,
+    profile=False,
 )
-#assert (base_args.max_iterations - 1) % base_args.display_freq == 0
+# assert (base_args.max_iterations - 1) % base_args.display_freq == 0
 
 
 def parse_file_once(fname="prompts.json"):
