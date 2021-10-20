@@ -33,7 +33,11 @@ from tqdm.notebook import tqdm
 from CLIP import clip
 
 
-version = "0.2-pooling-no-augs"
+versions = {
+    "0.2.1": "0.2.1-pooling-no-augs-truncate",
+    "0.2": "0.2-pooling-no-augs",  # adaptive_avg_pool2d no augmentations but they shouldn't have been on anyway i think
+}
+version = versions["0.2"]
 
 
 def sinc(x):
@@ -307,20 +311,22 @@ def generate(args):
         )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
+    slug = "".join(c if (c.isalnum() or c in "._ ") else "_" for c in args.prompts[0])[
+        :250
+    ]
+    try:
+        (Path("output") / slug / "steps").mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        pass
+
     @torch.no_grad()
     def checkin(i, losses):
         losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
         out = synth(z)
         TF.to_pil_image(out[0].cpu()).save("progress.jpg")
-        shutil.copy("progress.jpg", f"output/{folder}/{folder}.jpg")
+        shutil.copy("progress.jpg", f"output/{slug}/progress.jpg")
         # display.display(display.Image("progress.png"))
-
-    folder = args.prompts[0].replace(" ", "_")[:250]
-    try:
-        (Path("output") / folder / "steps").mkdir(parents=True, exist_ok=True)
-    except FileExistsError:
-        pass
 
     def ascend_txt(i: int):
         out = synth(z)
@@ -336,7 +342,7 @@ def generate(args):
         if args.video:
             with torch.no_grad():
                 # how to profile this?
-                TF.to_pil_image(out[0].cpu()).save(f"output/{folder}/steps/{i:04}.jpg")
+                TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.jpg")
         return result
 
     def train(i):
