@@ -1,14 +1,19 @@
 #!/usr/bin/python3.9
-import logging
-import time
+# pylint: disable=consider-using-with,subprocess-run-check
 import json
-import sys
-import subprocess
+import logging
 import os
+import subprocess
+import sys
+import time
+import traceback
+
 import redis
 import requests
 import TwitterAPI as t
+
 import main_ganclip_hacking as clipart
+
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
     "qxmCL5ebziSwOIlf3MByuhRvY",
@@ -39,50 +44,71 @@ except IndexError:
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=port, password=password)
-while 1:
-    item = r.lindex("prompt_queue", 0)
-    print(item)
-    if not item:
-        time.sleep(60)
-        item = r.lindex("prompt_queue", 0)
-        if not item:
-            requests.post(
-                f"{signal_url}/admin", params={"message": "powering down worker"}
-            )
-            subprocess.run(["sudo", "poweroff"])
-            continue
-    try:
-        blob = json.loads(item)
-    except (json.JSONDecodeError, TypeError):
-        logging.info(item)
-        continue
-    try:
-        settings = json.loads(blob["prompt"])
-        assert isinstance(settings, dict)
-        args = clipart.base_args.with_update(settings)
-    except (json.JSONDecodeError, AssertionError):
-        args = clipart.base_args.with_update(
-            {"text": blob["prompt"], "max_iterations": 200}
-        )
-    print(args)
-    start_time = time.time()
-    clipart.generate(args)
-    minutes, seconds = divmod(round(time.time() - start_time), 60)
-    f = open("progress.jpg", mode="rb")
-    print("generated")
-    message = blob["prompt"] + f".\nTook {minutes}m{seconds}s to generate"
+
+
+def post(elapsed: float, prompt_blob: dict, fname="progress.jpg") -> None:
+    minutes, seconds = divmod(elapsed, 60)
+    f = open(fname, mode="rb")
+    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate. v{clipart.version}"
     requests.post(
         f"{signal_url}/attachment",
-        params={"message": message, "destination": blob["callback"]},
+        params={"message": message, "destination": prompt_blob["callback"]},
         files={"image": f},
     )
-    r.lrem("prompt_queue", 1, item)
     media = twitter_api.request(
-        "media/upload", None, {"media": open("progress.jpg", mode="rb").read()}
+        "media/upload", None, {"media": open(fname, mode="rb").read()}
     ).json()
     media_id = media["media_id"]
-    post = {
-        "status": blob["prompt"],
+    twitter_post = {
+        "status": prompt_blob["prompt"],
         "media_ids": media_id,
     }
-    req = twitter_api.request("statuses/update", post)
+    twitter_api.request("statuses/update", twitter_post)
+
+
+def admin(msg: str) -> None:
+    requests.post(
+        f"{signal_url}/admin",
+        params={"message": msg},
+    )
+
+
+if __name__ == "__main__":
+    while 1:
+        item = r.lindex("prompt_queue", 0)
+        print(item)
+        if not item:
+            time.sleep(60)
+            item = r.lindex("prompt_queue", 0)
+            if not item:
+                admin("powering down worker")
+                subprocess.run(["sudo", "poweroff"])
+                continue
+        try:
+            blob = json.loads(item)
+        except (json.JSONDecodeError, TypeError):
+            logging.info(item)
+            continue
+        try:
+            settings = json.loads(blob["prompt"])
+            assert isinstance(settings, dict)
+            args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
+                settings
+            )
+        except (json.JSONDecodeError, AssertionError):
+            args = clipart.base_args.with_update(
+                {"text": blob["prompt"], "max_iterations": 200}
+            )
+        print(args)
+        start_time = time.time()
+        try:
+            clipart.generate(args)
+            print("generated")
+            post(round(time.time() - start_time), blob)
+            r.lrem("prompt_queue", 1, item)
+        except:  # pylint: disable=bare-except
+            error_message = traceback.format_exc()
+            print(item)
+            admin(item)
+            print(error_message)
+            admin(error_message)

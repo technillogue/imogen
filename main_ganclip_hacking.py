@@ -20,6 +20,7 @@ import numpy as np
 import imageio
 
 # from IPython import display
+import kornia.augmentation as K
 from omegaconf import OmegaConf
 from PIL import Image
 from taming.models import cond_transformer, vqgan
@@ -30,6 +31,9 @@ from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
 from CLIP import clip
+
+
+version = "0.2-pooling-no-augs"
 
 
 def sinc(x):
@@ -178,26 +182,30 @@ class MakeCutouts(nn.Module):
         )
         self.noise_factor = 0.1
 
-        def forward(self, input):
-            sideY, sideX = input.shape[2:4]
-            max_size = min(sideX, sideY)
-            min_size = min(sideX, sideY, self.cut_size)
-            cutouts = []
-            for _ in range(self.cutn):
-                size = int(
-                    torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
-                )
-                offsetx = torch.randint(0, sideX - size + 1, ())
-                offsety = torch.randint(0, sideY - size + 1, ())
-                cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-                cutouts.append(resample(cutout, (self.cut_size, self.cut_size)))
-            batch = self.augs(torch.cat(cutouts, dim=0))
-            if self.noise_factor:
-                facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(
-                    0, self.noise_factor
-                )
-                batch = batch + facs * torch.randn_like(batch)
-            return clamp_with_grad(batch, 0, 1)
+    def forward(self, input):
+        sideY, sideX = input.shape[2:4]
+        max_size = min(sideX, sideY)
+        min_size = min(sideX, sideY, self.cut_size)
+        cutouts = []
+        for _ in range(self.cutn):
+            size = int(
+                torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
+            )
+            offsetx = torch.randint(0, sideX - size + 1, ())
+            offsety = torch.randint(0, sideY - size + 1, ())
+            cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+
+            cutouts.append(F.adaptive_avg_pool2d(cutout, self.cut_size))
+        return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
+        # batch = self.augs(torch.cat(cutouts, dim=0))
+        # if self.noise_factor:
+        #     facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(
+        #         0, self.noise_factor
+        #     )
+        #     batch = batch + facs * torch.randn_like(batch)
+        # ret = clamp_with_grad(batch, 0, 1)
+        # print("clamped")
+        # return ret
 
 
 def load_vqgan_model(config_path, checkpoint_path):
@@ -227,7 +235,7 @@ def resize_image(image, out_size):
 def generate(args):
     # device = torch.device("cpu")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logging.info("Using device:", device)
+    logging.info("Using device: %s", device)
 
     model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(device)
     perceptor = (
@@ -275,7 +283,9 @@ def generate(args):
         txt, weight, stop = parse_prompt(prompt)
         logging.info(txt)
         print(txt)
-        embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
+        embed = perceptor.encode_text(
+            clip.tokenize(txt, truncate=True).to(device)
+        ).float()
         prompt_modules.append(PromptModule(embed, weight, stop).to(device))
 
     for prompt in args.image_prompts:
@@ -306,11 +316,17 @@ def generate(args):
         shutil.copy("progress.jpg", f"output/{folder}/{folder}.jpg")
         # display.display(display.Image("progress.png"))
 
-    folder = args.prompts[0].replace(" ", "_")
+    folder = args.prompts[0].replace(" ", "_")[:250]
+    try:
+        (Path("output") / folder / "steps").mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        pass
 
     def ascend_txt(i: int):
         out = synth(z)
-        iii = perceptor.encode_image(normalize(make_cutouts(out))).float()
+        # error occurs after augs but before perceptor?
+        cutouts = normalize(make_cutouts(out))
+        iii = perceptor.encode_image(cutouts).float()
         result = []
         if args.init_weight:
             result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
@@ -334,11 +350,6 @@ def generate(args):
         with torch.no_grad():
             z.copy_(z.maximum(z_min).minimum(z_max))
 
-    folder = args.prompts[0].replace(" ", "_")
-    try:
-        (Path("output") / folder / "steps").mkdir(parents=True, exist_ok=True)
-    except FileExistsError:
-        pass
     i = 0
     try:
         with tqdm() as pbar:
