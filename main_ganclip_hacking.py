@@ -34,10 +34,10 @@ from CLIP import clip
 
 
 versions = {
-    "0.2.1": "0.2.1-pooling-no-augs-truncate",
+    "0.2.1": "0.2.1-truncate-pooling-no-augs",
     "0.2": "0.2-pooling-no-augs",  # adaptive_avg_pool2d no augmentations but they shouldn't have been on anyway i think
 }
-version = versions["0.2"]
+version = versions["0.2.1"]
 
 
 def sinc(x):
@@ -171,7 +171,7 @@ def parse_prompt(prompt):
 
 
 class MakeCutouts(nn.Module):
-    def __init__(self, cut_size, cutn, cut_pow=1.0):
+    def __init__(self, cut_size, cutn, args: "BetterNamespace", cut_pow=1.0):
         super().__init__()
         self.cut_size = cut_size
         self.cutn = cutn
@@ -185,6 +185,9 @@ class MakeCutouts(nn.Module):
             K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
         )
         self.noise_factor = 0.1
+        if args.resample_method == "pool":
+            self.resample_function =  F.adaptive_avg_pool2d
+
 
     def forward(self, input):
         sideY, sideX = input.shape[2:4]
@@ -248,7 +251,7 @@ def generate(args):
     cut_size = perceptor.visual.input_resolution
     e_dim = model.quantize.e_dim
     f = 2 ** (model.decoder.num_resolutions - 1)
-    make_cutouts = MakeCutouts(cut_size, args.cutn, cut_pow=args.cut_pow)
+    make_cutouts = MakeCutouts(cut_size, args.cutn, args, cut_pow=args.cut_pow)
     n_toks = model.quantize.n_e
     toksX, toksY = args.size[0] // f, args.size[1] // f
     sideX, sideY = toksX * f, toksY * f
@@ -345,26 +348,24 @@ def generate(args):
                 TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.jpg")
         return result
 
-    def train(i):
-        opt.zero_grad()
-        lossAll = ascend_txt(i)
-        if i % args.display_freq == 0:
+    steps_without_checkin = 0
+    with tqdm() as pbar:
+        for i in range(args.max_iterations):
+            steps_without_checkin += 1
+            opt.zero_grad()
+            lossAll = ascend_txt(i)
+            if i % args.display_freq == 0:
+                checkin(i, lossAll)
+                steps_without_checkin = 0
+            loss = sum(lossAll)
+            loss.backward()
+            opt.step()
+            with torch.no_grad():
+                z.copy_(z.maximum(z_min).minimum(z_max))
+            pbar.update()
+        if steps_without_checkin:
             checkin(i, lossAll)
-        loss = sum(lossAll)
-        loss.backward()
-        opt.step()
-        with torch.no_grad():
-            z.copy_(z.maximum(z_min).minimum(z_max))
-
-    i = 0
-    try:
-        with tqdm() as pbar:
-            for i in range(args.max_iterations):
-                train(i)
-                i += 1
-                pbar.update()
-    except KeyboardInterrupt:
-        pass
+        return ", ".join(f"{loss.item():g}" for loss in lossAll)
 
 
 class BetterNamespace:
@@ -396,12 +397,14 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
+    resample_method="pool",
     display_freq=100,
     seed=0,
-    max_iterations=50,
+    max_iterations=201,
     name="container",
     video=False,
 )
+#assert (base_args.max_iterations - 1) % base_args.display_freq == 0
 
 
 def parse_file_once(fname="prompts.json"):

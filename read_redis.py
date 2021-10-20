@@ -46,10 +46,10 @@ host, port = rest.split(":")
 r = redis.Redis(host=host, port=port, password=password)
 
 
-def post(elapsed: float, prompt_blob: dict, fname="progress.jpg") -> None:
+def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> None:
     minutes, seconds = divmod(elapsed, 60)
     f = open(fname, mode="rb")
-    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate. v{clipart.version}"
+    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate, {loss} loss, v{clipart.version}."
     requests.post(
         f"{signal_url}/attachment",
         params={"message": message, "destination": prompt_blob["callback"]},
@@ -102,9 +102,9 @@ if __name__ == "__main__":
         print(args)
         start_time = time.time()
         try:
-            clipart.generate(args)
+            loss = clipart.generate(args)
             print("generated")
-            post(round(time.time() - start_time), blob)
+            post(round(time.time() - start_time), blob, loss)
             r.lrem("prompt_queue", 1, item)
         except:  # pylint: disable=bare-except
             error_message = traceback.format_exc()
