@@ -63,7 +63,7 @@ def ramp(ratio, width):
 
 def resample(input, size: int, align_corners=True):
     n, c, h, w = input.shape
-    dh =  dw = size
+    dh = dw = size
 
     input = input.view([n * c, 1, h, w])
 
@@ -192,12 +192,17 @@ class MakeCutouts(nn.Module):
         else:
             print("using lanczos/bicubic resampling")
             self.resample_function = resample
+        self.single_cutout = args.single_cutout
 
     def forward(self, input):
         sideY, sideX = input.shape[2:4]
         max_size = min(sideX, sideY)
         min_size = min(sideX, sideY, self.cut_size)
         cutouts = []
+        # if self.single_cutout:
+        #     return clamp_with_grad(
+        #         torch.cat([self.resample_function(input, self.cut_size)], dim=0), 0, 1
+        #     )
         for _ in range(self.cutn):
             size = int(
                 torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
@@ -208,6 +213,7 @@ class MakeCutouts(nn.Module):
             resampled = self.resample_function(cutout, self.cut_size)
             cutouts.append(resampled)
         return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
+        # nope this still doesn't work: MAGMA not initialized or bad device
         # batch = self.augs(torch.cat(cutouts, dim=0))
         # if self.noise_factor:
         #     facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(
@@ -407,6 +413,7 @@ base_args = BetterNamespace(
     name="container",
     video=False,
     profile=False,
+    single_cutout=True,
 )
 # assert (base_args.max_iterations - 1) % base_args.display_freq == 0
 
