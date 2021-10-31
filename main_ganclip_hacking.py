@@ -19,7 +19,6 @@ import torch
 import numpy as np
 import imageio
 
-# from IPython import display
 import kornia.augmentation as K
 from omegaconf import OmegaConf
 from PIL import Image
@@ -162,13 +161,15 @@ def fetch(url_or_path):
 
 
 def parse_prompt(prompt):
-    if prompt.startswith("http://") or prompt.startswith("https://"):
-        vals = prompt.rsplit(":", 3)
-        vals = [vals[0] + ":" + vals[1], *vals[2:]]
-    else:
-        vals = prompt.rsplit(":", 2)
-    vals = vals + ["", "1", "-inf"][len(vals) :]
-    return vals[0], float(vals[1]), float(vals[2])
+    # text, weight, stop
+    return (prompt, 1.0, float("-inf"))
+    # if prompt.startswith("http://") or prompt.startswith("https://"):
+    #     vals = prompt.rsplit(":", 3)
+    #     vals = [vals[0] + ":" + vals[1], *vals[2:]]
+    # else:
+    #     vals = prompt.rsplit(":", 2)
+    # vals = vals + ["", "1", "-inf"][len(vals) :]
+    # return vals[0], float(vals[1]), float(vals[2])
 
 
 class MakeCutouts(nn.Module):
@@ -212,17 +213,14 @@ class MakeCutouts(nn.Module):
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
             resampled = self.resample_function(cutout, self.cut_size)
             cutouts.append(resampled)
-        return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
-        # nope this still doesn't work: MAGMA not initialized or bad device
-        # batch = self.augs(torch.cat(cutouts, dim=0))
-        # if self.noise_factor:
-        #     facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(
-        #         0, self.noise_factor
-        #     )
-        #     batch = batch + facs * torch.randn_like(batch)
-        # ret = clamp_with_grad(batch, 0, 1)
-        # print("clamped")
-        # return ret
+        # return clamp_with_grad(torch.cat(cutouts, dim=0), 0, 1)
+        batch = self.augs(torch.cat(cutouts, dim=0))
+        if self.noise_factor:
+            facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_factor)
+            batch = batch + facs * torch.randn_like(batch)
+        ret = clamp_with_grad(batch, 0, 1)
+        print("clamped")
+        return ret
 
 
 def load_vqgan_model(config_path, checkpoint_path):
@@ -324,7 +322,7 @@ def generate(args):
         )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
-    slug = "".join(c if (c.isalnum() or c in "._ ") else "_" for c in args.prompts[0])[
+    slug = "".join(c if (c.isalnum() or c in "._") else "_" for c in args.prompts[0])[
         :250
     ]
     try:
@@ -394,7 +392,7 @@ class BetterNamespace:
 
 base_args = BetterNamespace(
     prompts=["the ocean is on fire"],
-    image_prompts=[],  # "dracula.jpeg"],
+    image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
     size=[780, 480],
@@ -406,7 +404,7 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
-    resample_method="lanczos",
+    resample_method="pool",
     display_freq=100,
     seed=0,
     max_iterations=201,

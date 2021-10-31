@@ -24,7 +24,7 @@ def ramp(ratio: float, width: int) -> Tensor:
     return torch.cat([-out[1:].flip([0]), out])[1:-1]
 
 
-def resample(input: Tensor, size: "list[int]", align_corners: bool = True) -> Tensor:
+def resample(input: Tensor, size: tuple[int, int], align_corners: bool = True) -> Tensor:
     n, c, h, w = input.shape
     dh, dw = size
 

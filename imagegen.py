@@ -130,7 +130,7 @@ def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
 
 class Prompt(nn.Module):
     def __init__(
-        self, embed: Tensor, weight=1.0, stop=float("-inf"), dwelt=0, tag=""
+        self, embed: Tensor, weight: float = 1.0, stop=float("-inf"), dwelt=0, tag=""
     ) -> None:
         super().__init__()
         self.tag = tag
@@ -139,7 +139,7 @@ class Prompt(nn.Module):
         self.register_buffer("weight", torch.as_tensor(weight))
         self.register_buffer("stop", torch.as_tensor(stop))
 
-    def forward(self, input: Tensor):
+    def forward(self, input: Tensor) -> Tensor:
         input_normed = F.normalize(input.unsqueeze(1), dim=2)
         embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
         dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
@@ -231,7 +231,7 @@ def generate(args: "BetterNamespace") -> None:
 
     prompts = [
         Prompt(embed(text), weight=weight, tag=text).to(device)
-        for weight, text in zip(args.prompts[:2], (1.0, 0.0))
+        for text, weight in zip(args.prompts, (1.0, 0.0))
     ]
     prompt_queue = args.prompts[2:]
 
@@ -334,12 +334,13 @@ base_args = BetterNamespace(
     prompts=[
         "the ocean is on fire",
         "an abstract painting by a talented artist",
+        "the cyberpunk dystopia she told you not to worry about"
     ],
     root=".",  # change to a prompt slug
     image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
-    size=[780 // 4, 480 // 4],
+    size=[780, 480],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -350,9 +351,9 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=10,
     seed=0,
-    max_iterations=100,
+    max_iterations=-1,
     fade=100,  # @param {type:"number"}
     dwell=100,  # @param {type: "number"}
 )
-if __name__=="__main__":
+if __name__ == "__main__":
     generate(base_args)

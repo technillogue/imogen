@@ -11,14 +11,11 @@ def video(root: str = "") -> None:
     length = 15  # Desired video time in seconds
 
     frames = (Path(root) / "steps").iterdir()
-
-    import pdb
-    pdb.set_trace()
     # for a, b in zip(frames[:-1], frames[1:]):
     #   # interpolate?
 
     total_frames = len(list(frames))
-    print("total frames: {total_frames}, fps: {fps}")
+    print(f"total frames: {total_frames}, fps: {fps}")
     # fps = last_frame/10
     fps = np.clip(total_frames / length, min_fps, max_fps)
 
@@ -38,4 +35,4 @@ def video(root: str = "") -> None:
 
 
 if __name__=="__main__":
-    video("a_normal_star_trek_the_next_generation_episode")
+    video()
