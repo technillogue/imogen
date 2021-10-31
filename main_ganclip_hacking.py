@@ -33,11 +33,12 @@ from CLIP import clip
 
 
 versions = {
+    "0.2.3": "0.2.3-augs-pool",
     "0.2.2": "0.2.2-lanczos",
     "0.2.1": "0.2.1-truncate-pooling-no-augs",
     "0.2": "0.2-pooling-no-augs",  # adaptive_avg_pool2d no augmentations but they shouldn't have been on anyway i think
 }
-version = versions["0.2.2"]
+version = "0.2.4-augs-lanczos" # versions["0.2.3"]
 
 
 def sinc(x):
@@ -218,9 +219,7 @@ class MakeCutouts(nn.Module):
         if self.noise_factor:
             facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_factor)
             batch = batch + facs * torch.randn_like(batch)
-        ret = clamp_with_grad(batch, 0, 1)
-        print("clamped")
-        return ret
+        return clamp_with_grad(batch, 0, 1)
 
 
 def load_vqgan_model(config_path, checkpoint_path):
@@ -369,7 +368,7 @@ def generate(args):
             opt.step()
             with torch.no_grad():
                 z.copy_(z.maximum(z_min).minimum(z_max))
-            pbar.update()
+            pbar.update(1)
         if steps_without_checkin:
             checkin(i, lossAll)
         return ", ".join(f"{loss.item():g}" for loss in lossAll)
@@ -404,7 +403,7 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
-    resample_method="pool",
+    resample_method="lanczos",
     display_freq=100,
     seed=0,
     max_iterations=201,

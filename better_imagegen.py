@@ -243,18 +243,23 @@ def generate(args: "BetterNamespace") -> None:
         # queue = open("queue").readlines()
         if prompts[0].dwelt < dwell:
             prompts[0].dwelt += 1
-            print("dwell: ", prompts[0].dwelt)
+            # print("dwell: ", prompts[0].dwelt)
         elif prompts[0].weight > 0 and len(prompts) >= 2:
             first, second = prompts
             waning_weight = float(first.weight) - 1 / fade
             waxing_weight = min(1.0, float(second.weight) + 1 / fade)
-            prompts[0] = Prompt(first.embed, waning_weight, dwelt=first.dwelt)
-            prompts[1] = Prompt(second.embed, waxing_weight, dwelt=second.dwelt)
+            prompts[0] = Prompt(
+                first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
+            )
+            prompts[1] = Prompt(
+                second.embed, waxing_weight, dwelt=second.dwelt, tag=first.tag
+            )
         else:
             prompts.pop(0)
-            next_text = prompt_queue.pop(0)
-            print("next text: ", next_text)
-            prompts.append(Prompt(embed(next_text), weight=0, tag=next_text).to(device))
+            if prompt_queue:
+                next_text = prompt_queue.pop(0)
+                print("next text: ", next_text)
+                prompts.append(Prompt(embed(next_text), weight=0, tag=next_text).to(device))
         if i % args.display_freq == 0:
             for prompt in prompts:
                 describe_prompt(prompt)
@@ -310,7 +315,7 @@ def generate(args: "BetterNamespace") -> None:
                 if i == args.max_iterations:
                     break
                 i += 1
-                pbar.update()
+                pbar.update(1)
     except KeyboardInterrupt:
         pass
 
@@ -332,11 +337,12 @@ class BetterNamespace:
 
 base_args = BetterNamespace(
     prompts=[
-        "the ocean is on fire",
-        "an abstract painting by a talented artist",
-        "the cyberpunk dystopia she told you not to worry about"
+        "the moonlit room",
+        "a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream",
+        "faerie rave",
+        "a completely normal forest with no supernatural entities in sight",
     ],
-    root=".",  # change to a prompt slug
+    root="moonlit-dream-rave-forest",  # change to a prompt slug
     image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],

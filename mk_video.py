@@ -1,4 +1,5 @@
 #!/usr/bin/python3.9
+import sys
 import os
 from subprocess import PIPE, Popen
 from tqdm.notebook import tqdm
@@ -15,10 +16,10 @@ def video(root: str = "") -> None:
     #   # interpolate?
 
     total_frames = len(list(frames))
-    print(f"total frames: {total_frames}, fps: {fps}")
     # fps = last_frame/10
     fps = np.clip(total_frames / length, min_fps, max_fps)
 
+    print(f"total frames: {total_frames}, fps: {fps}")
     cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps} -pix_fmt yuv420p -crf 17 -preset veryslow video.mp4"
     p = Popen(
         cmd.split(" "),
@@ -35,4 +36,7 @@ def video(root: str = "") -> None:
 
 
 if __name__=="__main__":
-    video()
+    try:
+        video(sys.argv[1])
+    except IndexError:
+        video()
