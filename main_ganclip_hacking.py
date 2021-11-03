@@ -322,7 +322,7 @@ def generate(args):
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
     slug = "".join(c if (c.isalnum() or c in "._") else "_" for c in args.prompts[0])[
-        :250
+        :240
     ]
     try:
         (Path("output") / slug / "steps").mkdir(parents=True, exist_ok=True)
