@@ -76,33 +76,33 @@ def admin(msg: str) -> None:
 if __name__ == "__main__":
     backoff = 60
     while 1:
-        item = r.lindex("prompt_queue", 0)
-        print(item)
-        if not item:
-            time.sleep(60)
+        try:
             item = r.lindex("prompt_queue", 0)
+            print(item)
             if not item:
-                admin("powering down worker")
-                subprocess.run(["sudo", "poweroff"])
+                time.sleep(60)
+                item = r.lindex("prompt_queue", 0)
+                if not item:
+                    admin("powering down worker")
+                    subprocess.run(["sudo", "poweroff"])
+                    continue
+            try:
+                blob = json.loads(item)
+            except (json.JSONDecodeError, TypeError):
+                logging.info(item)
                 continue
-        try:
-            blob = json.loads(item)
-        except (json.JSONDecodeError, TypeError):
-            logging.info(item)
-            continue
-        try:
-            settings = json.loads(blob["prompt"])
-            assert isinstance(settings, dict)
-            args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
-                settings
-            )
-        except (json.JSONDecodeError, AssertionError):
-            args = clipart.base_args.with_update(
-                {"text": blob["prompt"], "max_iterations": 200}
-            )
-        print(args)
-        start_time = time.time()
-        try:
+            try:
+                settings = json.loads(blob["prompt"])
+                assert isinstance(settings, dict)
+                args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
+                    settings
+                )
+            except (json.JSONDecodeError, AssertionError):
+                args = clipart.base_args.with_update(
+                    {"text": blob["prompt"], "max_iterations": 200}
+                )
+            print(args)
+            start_time = time.time()
             if args.profile:
                 with cProfile.Profile() as profiler:
                     loss = clipart.generate(args)
