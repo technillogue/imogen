@@ -40,7 +40,8 @@ requests.post(f"{signal_url}/admin", params={"message": "starting read_redis"})
 try:
     url = sys.argv[1]
 except IndexError:
-    url = "redis://:Ing2ODJrcXA2bXZqOWQ1NDMia953abbc82e1f4b9c47158d739526833d1006263@imogen.redis.fly.io:10079"
+    url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
+    # "redis://:Ing2ODJrcXA2bXZqOWQ1NDMia953abbc82e1f4b9c47158d739526833d1006263@imogen.redis.fly.io:10079"
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=port, password=password)
@@ -94,13 +95,14 @@ if __name__ == "__main__":
             try:
                 settings = json.loads(blob["prompt"])
                 assert isinstance(settings, dict)
-                args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
-                    settings
-                )
+                args = clipart.base_args.with_update(
+                    {"max_iterations": 200}
+                ).with_update(settings)
             except (json.JSONDecodeError, AssertionError):
                 args = clipart.base_args.with_update(
                     {"text": blob["prompt"], "max_iterations": 200}
                 )
+            args = args.with_update(blob.get("params", {}))
             print(args)
             start_time = time.time()
             if args.profile:
