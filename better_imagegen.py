@@ -297,13 +297,14 @@ def generate(args: "BetterNamespace") -> None:
         opt.step()
         with torch.no_grad():
             z.copy_(z.maximum(z_min).minimum(z_max))
+        return loss
 
     i = 0
     try:
         while 1:
             with tqdm() as pbar:
                 try:
-                    train(i)
+                    loss = train(i)
                 except IndexError:
                     break
                 if i == args.max_iterations:
@@ -312,7 +313,7 @@ def generate(args: "BetterNamespace") -> None:
                 pbar.update(1)
     except KeyboardInterrupt:
         pass
-
+    return loss
     # steps_without_checkin = 0
     # with tqdm() as pbar:
     #     lossAll = []
@@ -373,8 +374,8 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=0,
     max_iterations=-1,
-    fade=5,  # @param {type:"number"}
-    dwell=5,  # @param {type: "number"}
+    fade=50,  # @param {type:"number"}
+    dwell=50,  # @param {type: "number"}
     profile=False,
 )
 if __name__ == "__main__":

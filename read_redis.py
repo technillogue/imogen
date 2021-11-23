@@ -58,10 +58,11 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         params={"message": message, "destination": prompt_blob["callback"]},
         files={"image": f},
     )
-    media = twitter_api.request(
+    media_resp = twitter_api.request(
         "media/upload", None, {"media": open(fname, mode="rb").read()}
-    ).json()
+    )
     try:
+        media = media_resp.json()
         media_id = media["media_id"]
         twitter_post = {
             "status": prompt_blob["prompt"],
@@ -69,8 +70,9 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         }
         twitter_api.request("statuses/update", twitter_post)
     except KeyError:
-        logging.error(media_id)
-        admin(media_id)
+        logging.error(media.text)
+        admin(media.text + repr(media.response))
+
 
 def admin(msg: str) -> None:
     requests.post(
