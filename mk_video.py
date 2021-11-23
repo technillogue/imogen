@@ -20,7 +20,7 @@ def video(root: str = "") -> None:
     fps = np.clip(total_frames / length, min_fps, max_fps)
 
     print(f"total frames: {total_frames}, fps: {fps}")
-    cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps} -pix_fmt yuv420p -crf 17 -preset veryslow video.mp4"
+    cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps} -pix_fmt yuv420p -crf 17 -preset veryslow {root}/video.mp4"
     p = Popen(
         cmd.split(" "),
         stdin=PIPE,

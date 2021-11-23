@@ -11,8 +11,10 @@ import cProfile
 import redis
 import requests
 import TwitterAPI as t
+import mk_video
 
-import main_ganclip_hacking as clipart
+# import main_ganclip_hacking as clipart
+import better_imagegen as clipart
 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
@@ -59,18 +61,21 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
     media = twitter_api.request(
         "media/upload", None, {"media": open(fname, mode="rb").read()}
     ).json()
-    media_id = media["media_id"]
-    twitter_post = {
-        "status": prompt_blob["prompt"],
-        "media_ids": media_id,
-    }
-    twitter_api.request("statuses/update", twitter_post)
-
+    try:
+        media_id = media["media_id"]
+        twitter_post = {
+            "status": prompt_blob["prompt"],
+            "media_ids": media_id,
+        }
+        twitter_api.request("statuses/update", twitter_post)
+    except KeyError:
+        logging.error(media_id)
+        admin(media_id)
 
 def admin(msg: str) -> None:
     requests.post(
         f"{signal_url}/admin",
-        params={"message": msg},
+        params={"message": str(msg)},
     )
 
 
@@ -92,17 +97,25 @@ if __name__ == "__main__":
             except (json.JSONDecodeError, TypeError):
                 logging.info(item)
                 continue
+            video = False
             try:
                 settings = json.loads(blob["prompt"])
                 assert isinstance(settings, dict)
                 args = clipart.base_args.with_update(
                     {"max_iterations": 200}
                 ).with_update(settings)
+                video = settings.get("video", False)
             except (json.JSONDecodeError, AssertionError):
-                args = clipart.base_args.with_update(
-                    {"text": blob["prompt"], "max_iterations": 200}
-                )
+                maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
+                video = len(maybe_prompt_list) > 1
+                if video:
+                    args = clipart.base_args.with_update({"prompts": maybe_prompt_list})
+                else:
+                    args = clipart.base_args.with_update(
+                        {"text": blob["prompt"], "max_iterations": 200}
+                    )
             args = args.with_update(blob.get("params", {}))
+            path = f"output/{clipart.mk_slug(args.prompts)}"
             print(args)
             start_time = time.time()
             if args.profile:
@@ -113,7 +126,10 @@ if __name__ == "__main__":
             else:
                 loss = clipart.generate(args)
                 print("generated")
-            post(round(time.time() - start_time), blob, loss)
+                if video:
+                    mk_video.video(path)
+            fname = "video.mp4" if video else "progress.png"
+            post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
             r.lrem("prompt_queue", 1, item)
             backoff = 60
         except:  # pylint: disable=bare-except

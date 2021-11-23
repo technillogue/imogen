@@ -1,14 +1,10 @@
-#!/usr/bin/python3.9
-
 # import warnings
 # warnings.simplefilter("ignore")
 import pdb
 import sys
-from typing import Any
-
-import imageio
+from typing import Any, Union
+from pathlib import Path
 import kornia.augmentation as K
-import numpy as np
 import torch
 from omegaconf import OmegaConf
 from PIL import Image, ImageFile
@@ -17,6 +13,7 @@ from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
+import logging
 
 from CLIP import clip
 from utils import resample  # , resize_image
@@ -25,6 +22,19 @@ sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+version = "0.1"
+logger = logging.getLogger()
+logger.setLevel("DEBUG")
+fmt = logging.Formatter("{levelname} {module}:{lineno}: {message}", style="{")
+console_handler = logging.StreamHandler()
+console_handler.setLevel("INFO")
+console_handler.setFormatter(fmt)
+logger.addHandler(console_handler)
+
+def mk_slug(text: Union[str, list[str]]) -> str:
+    text = "".join(text)
+    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
 
 
 class ReplaceGrad(torch.autograd.Function):
@@ -101,8 +111,8 @@ class MakeCutouts(nn.Module):
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
-            sampled = resample(cutout, (self.cut_size, self.cut_size))
-            cutouts.append(sampled)
+            resampled = resample(cutout, (self.cut_size, self.cut_size))
+            cutouts.append(resampled)
         batch = self.augs(torch.cat(cutouts, dim=0))
         if self.noise_factor:
             facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_factor)
@@ -168,6 +178,9 @@ def generate(args: "BetterNamespace") -> None:
     z_min = model.quantize.embedding.weight.min(dim=0).values[None, :, None, None]
     z_max = model.quantize.embedding.weight.max(dim=0).values[None, :, None, None]
 
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+
     if args.init_image:
         pil_image = Image.open(args.init_image).convert("RGB")
         pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
@@ -189,39 +202,24 @@ def generate(args: "BetterNamespace") -> None:
 
     print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
-    # for prompt in args.prompts:
-    #     txt, weight, stop = parse_prompt(prompt)
-    #     embed = perceptor.encode_text(clip.tokenize(txt).to(device)).float()
-    #     prompt_modules.append(PromptModule(embed, weight, stop).to(device))
-
-    # for prompt in args.image_prompts:
-    #     path, weight, stop = parse_prompt(prompt)
-    #     img = resize_image(Image.open(fetch(path)).convert("RGB"), (sideX, sideY))
-    #     batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
-    #     embed = perceptor.encode_image(normalize(batch)).float()
-
-    #     prompt_modules.append(PromptModule(embed, weight, stop).to(device))
-
-    # for seed, weight in zip(args.noise_prompt_seeds, args.noise_prompt_weights):
-    #     gen = torch.Generator().manual_seed(seed)
-    #     embed = torch.empty([1, perceptor.visual.output_dim]).normal_(generator=gen)
-    #     prompt_modules.append(PromptModule(embed, weight).to(device))
-
     def synth(z: Tensor) -> Tensor:
         z_q = vector_quantize(z.movedim(1, 3), model.quantize.embedding.weight).movedim(
             3, 1
         )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
+    slug = mk_slug(args.prompts)
+    try:
+        (Path("output") / slug / "steps").mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        pass
+
     @torch.no_grad()
     def checkin(i: int, losses: "list[float]") -> None:
         losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
         tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
-        # out = synth(z)
-        # TF.to_pil_image(out[0].cpu()).save('progress.png')
-        # img = display.Image('progress.png')
-        # handle.update(img)
-        # display.display(img)
+        out = synth(z)
+        TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/progress.png")
 
     def describe_prompt(prompt: Prompt) -> None:
         print(f"{prompt.tag}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
@@ -240,7 +238,6 @@ def generate(args: "BetterNamespace") -> None:
         prompts: "list[Prompt]", fade=300, dwell=300
     ) -> "list[Prompt]":
         # realtime queue additions??
-        # queue = open("queue").readlines()
         if prompts[0].dwelt < dwell:
             prompts[0].dwelt += 1
             # print("dwell: ", prompts[0].dwelt)
@@ -259,7 +256,9 @@ def generate(args: "BetterNamespace") -> None:
             if prompt_queue:
                 next_text = prompt_queue.pop(0)
                 print("next text: ", next_text)
-                prompts.append(Prompt(embed(next_text), weight=0, tag=next_text).to(device))
+                prompts.append(
+                    Prompt(embed(next_text), weight=0, tag=next_text).to(device)
+                )
         if i % args.display_freq == 0:
             for prompt in prompts:
                 describe_prompt(prompt)
@@ -283,14 +282,9 @@ def generate(args: "BetterNamespace") -> None:
             # that handles checking if we're fading?
 
         with torch.no_grad():
-            # how to profile this?
-            img = np.array(
-                out.mul(255).clamp(0, 255)[0].cpu().detach().numpy().astype(np.uint8)
-            )[:, :, :]
-            img = np.transpose(img, (1, 2, 0))
-            filename = f"{args.root}/steps/{i:04}.png"
-            imageio.imwrite(filename, np.array(img))
-
+            TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.png")
+        if not result:
+            raise IndexError
         return result
 
     def train(i):
@@ -318,6 +312,27 @@ def generate(args: "BetterNamespace") -> None:
                 pbar.update(1)
     except KeyboardInterrupt:
         pass
+
+    # steps_without_checkin = 0
+    # with tqdm() as pbar:
+    #     lossAll = []
+    #     for i in range(args.max_iterations):
+    #         steps_without_checkin += 1
+    #         opt.zero_grad()
+    #         return ascend_txt(i)
+    #         lossAll = ascend_txt(i)
+    #         if i % args.display_freq == 0:
+    #             checkin(i, lossAll)
+    #             steps_without_checkin = 0
+    #         loss = sum(lossAll)
+    #         loss.backward()
+    #         opt.step()
+    #         with torch.no_grad():
+    #             z.copy_(z.maximum(z_min).minimum(z_max))
+    #         pbar.update(1)
+    #     if steps_without_checkin:
+    #         checkin(i, lossAll)
+    #     return ", ".join(f"{loss.item():g}" for loss in lossAll)
 
 
 class BetterNamespace:
@@ -358,8 +373,9 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=0,
     max_iterations=-1,
-    fade=100,  # @param {type:"number"}
-    dwell=100,  # @param {type: "number"}
+    fade=5,  # @param {type:"number"}
+    dwell=5,  # @param {type: "number"}
+    profile=False,
 )
 if __name__ == "__main__":
     generate(base_args)

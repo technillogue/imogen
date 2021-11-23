@@ -38,7 +38,11 @@ versions = {
     "0.2.1": "0.2.1-truncate-pooling-no-augs",
     "0.2": "0.2-pooling-no-augs",  # adaptive_avg_pool2d no augmentations but they shouldn't have been on anyway i think
 }
-version = "0.2.4-augs-lanczos" # versions["0.2.3"]
+version = "0.2.4-augs-lanczos"  # versions["0.2.3"]
+
+
+def mk_slug(text):
+    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
 
 
 def sinc(x):
@@ -128,24 +132,6 @@ def vector_quantize(x, codebook):
     x_q = F.one_hot(indices, codebook.shape[0]).to(d.dtype) @ codebook
 
     return replace_grad(x_q, x)
-
-
-class PromptModule(nn.Module):
-    def __init__(self, embed, weight=1.0, stop=float("-inf")):
-        super().__init__()
-        self.register_buffer("embed", embed)
-        self.register_buffer("weight", torch.as_tensor(weight))
-        self.register_buffer("stop", torch.as_tensor(stop))
-
-    def forward(self, input):
-        input_normed = F.normalize(input.unsqueeze(1), dim=2)
-        embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
-        dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
-        dists = dists * self.weight.sign()
-        return (
-            self.weight.abs()
-            * replace_grad(dists, torch.maximum(dists, self.stop)).mean()
-        )
 
 
 def fetch(url_or_path):
@@ -239,6 +225,24 @@ def load_vqgan_model(config_path, checkpoint_path):
     return model
 
 
+class PromptModule(nn.Module):
+    def __init__(self, embed, weight=1.0, stop=float("-inf")):
+        super().__init__()
+        self.register_buffer("embed", embed)
+        self.register_buffer("weight", torch.as_tensor(weight))
+        self.register_buffer("stop", torch.as_tensor(stop))
+
+    def forward(self, input):
+        input_normed = F.normalize(input.unsqueeze(1), dim=2)
+        embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
+        dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
+        dists = dists * self.weight.sign()
+        return (
+            self.weight.abs()
+            * replace_grad(dists, torch.maximum(dists, self.stop)).mean()
+        )
+
+
 def resize_image(image, out_size):
     ratio = image.size[0] / image.size[1]
     area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
@@ -321,9 +325,7 @@ def generate(args):
         )
         return clamp_with_grad(model.decode(z_q).add(1).div(2), 0, 1)
 
-    slug = "".join(c if (c.isalnum() or c in "._") else "_" for c in args.prompts[0])[
-        :240
-    ]
+    slug = mk_slug(args.prompts[0])
     try:
         (Path("output") / slug / "steps").mkdir(parents=True, exist_ok=True)
     except FileExistsError:
@@ -340,6 +342,7 @@ def generate(args):
 
     def ascend_txt(i: int):
         out = synth(z)
+        return out
         # error occurs after augs but before perceptor?
         cutouts = normalize(make_cutouts(out))
         iii = perceptor.encode_image(cutouts).float()
