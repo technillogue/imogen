@@ -116,6 +116,9 @@ if __name__ == "__main__":
                     args = clipart.base_args.with_update(
                         {"text": blob["prompt"], "max_iterations": 200}
                     )
+            params = blob.get("params", {})
+            if params["init_image"]:
+                open(params["init_image"], "wb").write(redis.get(params["init_image"]))
             args = args.with_update(blob.get("params", {}))
             path = f"output/{clipart.mk_slug(args.prompts)}"
             print(args)
