@@ -61,6 +61,25 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
     media_resp = twitter_api.request(
         "media/upload", None, {"media": open(fname, mode="rb").read()}
     )
+
+    # bytes_sent = 0
+    # total_bytes = os.path.getsize(VIDEO_FILENAME)
+    # file = open(VIDEO_FILENAME, 'rb')
+    # r = api.request('media/upload', {'command':'INIT', 'media_type':'video/mp4', 'total_bytes':total_bytes})
+    # check_status(r)
+
+    # media_id = r.json()['media_id']
+    # segment_id = 0
+
+    # while bytes_sent < total_bytes:
+    # 	chunk = file.read(4*1024*1024)
+    # 	r = api.request('media/upload', {'command':'APPEND', 'media_id':media_id, 'segment_index':segment_id}, {'media':chunk})
+    # 	check_status(r)
+    # 	segment_id = segment_id + 1
+    # 	bytes_sent = file.tell()
+    # 	print('[' + str(total_bytes) + ']', str(bytes_sent))
+
+    # r = api.request('media/upload', {'command':'FINALIZE', 'media_id':media_id})
     try:
         media = media_resp.json()
         media_id = media["media_id"]
