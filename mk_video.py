@@ -25,6 +25,7 @@ def video(root: str = "") -> None:
         cmd.split(" "),
         stdin=PIPE,
     )
+    assert p.stdin
 
     for path in sorted((Path(root) / "steps").iterdir()):
         Image.open(str(path)).save(p.stdin, "PNG")
