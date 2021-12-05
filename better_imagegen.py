@@ -233,12 +233,13 @@ def generate(args: "BetterNamespace") -> None:
         for text, weight in zip(args.prompts, (1.0, 0.0))
     ]
     prompt_queue = args.prompts[2:]
+    is_crossfade = len(args.prompts) > 1
 
     @torch.no_grad()
     def crossfade_prompts(
         prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
     ) -> "list[Prompt]":
-        if len(prompts) == 1 and not prompt_queue:
+        if is_crossfade:
             return prompts
         # realtime queue additions??
         if prompts[0].dwelt < dwell:
