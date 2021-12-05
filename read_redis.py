@@ -70,8 +70,11 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         }
         twitter_api.request("statuses/update", twitter_post)
     except KeyError:
-        logging.error(media.text)
-        admin(media.text + repr(media.response))
+        try:
+            logging.error(media_resp.text)
+            admin(media_resp.text)
+        except: # pylint: disable=bare-except
+            pass
 
 
 def admin(msg: str) -> None:
@@ -92,7 +95,8 @@ if __name__ == "__main__":
                 item = r.lindex("prompt_queue", 0)
                 if not item:
                     admin("powering down worker")
-                    subprocess.run(["sudo", "poweroff"])
+                    if not os.getenv("NO_POWEROFF"):
+                        subprocess.run(["sudo", "poweroff"])
                     continue
             try:
                 blob = json.loads(item)
@@ -117,8 +121,8 @@ if __name__ == "__main__":
                         {"text": blob["prompt"], "max_iterations": 200}
                     )
             params = blob.get("params", {})
-            if params["init_image"]:
-                open(params["init_image"], "wb").write(redis.get(params["init_image"]))
+            if params.get("init_image"):
+                open(params["init_image"], "wb").write(r.get(params["init_image"]))
             args = args.with_update(blob.get("params", {}))
             path = f"output/{clipart.mk_slug(args.prompts)}"
             print(args)

@@ -32,6 +32,7 @@ console_handler.setLevel("INFO")
 console_handler.setFormatter(fmt)
 logger.addHandler(console_handler)
 
+
 def mk_slug(text: Union[str, list[str]]) -> str:
     text = "".join(text)
     return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
@@ -189,8 +190,8 @@ def generate(args: "BetterNamespace") -> None:
         one_hot = F.one_hot(
             torch.randint(n_toks, [toksY * toksX], device=device), n_toks
         ).float()
-    z = one_hot @ model.quantize.embedding.weight
-    z = z.view([-1, toksY, toksX, embedding_dimension]).permute(0, 3, 1, 2)
+        z = one_hot @ model.quantize.embedding.weight
+        z = z.view([-1, toksY, toksX, embedding_dimension]).permute(0, 3, 1, 2)
     z_orig = z.clone()
     z.requires_grad_(True)
     opt = optim.Adam([z], lr=args.step_size)
@@ -235,8 +236,10 @@ def generate(args: "BetterNamespace") -> None:
 
     @torch.no_grad()
     def crossfade_prompts(
-        prompts: "list[Prompt]", fade=300, dwell=300
+        prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
     ) -> "list[Prompt]":
+        if len(prompts) == 1 and not prompt_queue:
+            return prompts
         # realtime queue additions??
         if prompts[0].dwelt < dwell:
             prompts[0].dwelt += 1
@@ -287,7 +290,7 @@ def generate(args: "BetterNamespace") -> None:
             raise IndexError
         return result
 
-    def train(i):
+    def train(i: int) -> None:
         opt.zero_grad()
         lossAll = ascend_txt(i, z)
         if i % args.display_freq == 0:
@@ -350,13 +353,16 @@ class BetterNamespace:
         new_ns.mapping.update(other_dict)
         return new_ns
 
+    def __repr__(self) -> str:
+        return repr(self.mapping)
+
 
 base_args = BetterNamespace(
     prompts=[
         "the moonlit room",
-        "a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream",
-        "faerie rave",
-        "a completely normal forest with no supernatural entities in sight",
+        # "a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream",
+        # "faerie rave",
+        # "a completely normal forest with no supernatural entities in sight",
     ],
     root="moonlit-dream-rave-forest",  # change to a prompt slug
     image_prompts=[],
