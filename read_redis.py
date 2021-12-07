@@ -103,6 +103,49 @@ def admin(msg: str) -> None:
     )
 
 
+def handle_item(item: bytes) -> None:
+    try:
+        blob = json.loads(item)
+    except (json.JSONDecodeError, TypeError):
+        logging.info(item)
+        return
+    video = False
+    try:
+        settings = json.loads(blob["prompt"])
+        assert isinstance(settings, dict)
+        args = clipart.base_args.with_update(
+            {"max_iterations": 200}
+        ).with_update(settings)
+        video = settings.get("video", False)
+    except (json.JSONDecodeError, AssertionError):
+        maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
+        video = len(maybe_prompt_list) > 1
+        if video:
+            args = clipart.base_args.with_update({"prompts": maybe_prompt_list})
+        else:
+            args = clipart.base_args.with_update(
+                {"text": blob["prompt"], "max_iterations": 200}
+            )
+    params = blob.get("params", {})
+    if params.get("init_image"):
+        open(params["init_image"], "wb").write(r.get(params["init_image"]))
+    args = args.with_update(blob.get("params", {}))
+    path = f"output/{clipart.mk_slug(args.prompts)}"
+    print(args)
+    start_time = time.time()
+    if args.profile:
+        with cProfile.Profile() as profiler:
+            loss = clipart.generate(args)
+        profiler.dump_stats(f"profiling/{clipart.version}.stats")
+        print("generated with stats")
+    else:
+        loss = clipart.generate(args)
+        print("generated")
+        if video:
+            mk_video.video(path)
+    fname = "video.mp4" if video else "progress.png"
+    post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
+
 if __name__ == "__main__":
     backoff = 60
     while 1:
@@ -113,52 +156,14 @@ if __name__ == "__main__":
                 time.sleep(60)
                 item = r.lindex("prompt_queue", 0)
                 if not item:
-                    admin("powering down worker")
-                    if not os.getenv("NO_POWEROFF"):
+                    if os.getenv("POWEROFF"):
+                        admin("powering down worker")
                         subprocess.run(["sudo", "poweroff"])
                     continue
-            try:
-                blob = json.loads(item)
-            except (json.JSONDecodeError, TypeError):
-                logging.info(item)
-                continue
-            video = False
-            try:
-                settings = json.loads(blob["prompt"])
-                assert isinstance(settings, dict)
-                args = clipart.base_args.with_update(
-                    {"max_iterations": 200}
-                ).with_update(settings)
-                video = settings.get("video", False)
-            except (json.JSONDecodeError, AssertionError):
-                maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
-                video = len(maybe_prompt_list) > 1
-                if video:
-                    args = clipart.base_args.with_update({"prompts": maybe_prompt_list})
-                else:
-                    args = clipart.base_args.with_update(
-                        {"text": blob["prompt"], "max_iterations": 200}
-                    )
-            params = blob.get("params", {})
-            if params.get("init_image"):
-                open(params["init_image"], "wb").write(r.get(params["init_image"]))
-            args = args.with_update(blob.get("params", {}))
-            path = f"output/{clipart.mk_slug(args.prompts)}"
-            print(args)
-            start_time = time.time()
-            if args.profile:
-                with cProfile.Profile() as profiler:
-                    loss = clipart.generate(args)
-                profiler.dump_stats(f"profiling/{clipart.version}.stats")
-                print("generated with stats")
-            else:
-                loss = clipart.generate(args)
-                print("generated")
-                if video:
-                    mk_video.video(path)
-            fname = "video.mp4" if video else "progress.png"
-            post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
+            handle_item(item)
             r.lrem("prompt_queue", 1, item)
+            # r.rpoplpush("prompt_queue", "processing-{host}") # ttl?
+            # r.lrem("processing-{host}"
             backoff = 60
         except:  # pylint: disable=bare-except
             error_message = traceback.format_exc()
