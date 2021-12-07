@@ -138,7 +138,7 @@ if __name__ == "__main__":
                 if video:
                     mk_video.video(path)
             fname = "video.mp4" if video else "progress.png"
-            post(round(time.time() - start_time), blob, round(loss, 4), f"{path}/{fname}")
+            post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
             r.lrem("prompt_queue", 1, item)
             backoff = 60
         except:  # pylint: disable=bare-except

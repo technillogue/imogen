@@ -239,7 +239,7 @@ def generate(args: "BetterNamespace") -> None:
     def crossfade_prompts(
         prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
     ) -> "list[Prompt]":
-        if is_crossfade:
+        if not is_crossfade:
             return prompts
         # realtime queue additions??
         if prompts[0].dwelt < dwell:
