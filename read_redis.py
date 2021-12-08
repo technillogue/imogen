@@ -58,8 +58,8 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         params={
             "message": message,
             "destination": prompt_blob["callback"],
-            "author": prompt_blob["author"],
-            "timestamp": prompt_blob["timestamp"],
+            "author": prompt_blob.get("author", ""),
+            "timestamp": prompt_blob.get("timestamp", ""),
         },
         files={"image": f},
     )
@@ -149,7 +149,9 @@ def handle_item(item: bytes) -> None:
         if video:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
-    post(round(time.time() - start_time), blob, round(float(loss), 4), f"{path}/{fname}")
+    post(
+        round(time.time() - start_time), blob, round(float(loss), 4), f"{path}/{fname}"
+    )
 
 
 if __name__ == "__main__":
