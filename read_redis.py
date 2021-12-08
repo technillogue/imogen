@@ -149,7 +149,7 @@ def handle_item(item: bytes) -> None:
         if video:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
-    post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
+    post(round(time.time() - start_time), blob, round(float(loss), 4), f"{path}/{fname}")
 
 
 if __name__ == "__main__":
