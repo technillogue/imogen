@@ -55,7 +55,12 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
     message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate, {loss} loss, v{clipart.version}."
     requests.post(
         f"{signal_url}/attachment",
-        params={"message": message, "destination": prompt_blob["callback"]},
+        params={
+            "message": message,
+            "destination": prompt_blob["callback"],
+            "author": prompt_blob["author"],
+            "timestamp": prompt_blob["timestamp"],
+        },
         files={"image": f},
     )
     media_resp = twitter_api.request(
@@ -92,7 +97,7 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         try:
             logging.error(media_resp.text)
             admin(media_resp.text)
-        except: # pylint: disable=bare-except
+        except:  # pylint: disable=bare-except
             pass
 
 
@@ -113,9 +118,9 @@ def handle_item(item: bytes) -> None:
     try:
         settings = json.loads(blob["prompt"])
         assert isinstance(settings, dict)
-        args = clipart.base_args.with_update(
-            {"max_iterations": 200}
-        ).with_update(settings)
+        args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
+            settings
+        )
         video = settings.get("video", False)
     except (json.JSONDecodeError, AssertionError):
         maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
@@ -145,6 +150,7 @@ def handle_item(item: bytes) -> None:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
     post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
+
 
 if __name__ == "__main__":
     backoff = 60
