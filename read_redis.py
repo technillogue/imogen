@@ -13,9 +13,9 @@ import requests
 import TwitterAPI as t
 import mk_video
 
-# import main_ganclip_hacking as clipart
 import better_imagegen as clipart
-
+# from feed_forward_vqgan_clip import main as feedforward
+ 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
     "qxmCL5ebziSwOIlf3MByuhRvY",
@@ -25,7 +25,7 @@ twitter_api = t.TwitterAPI(
     api_version="1.1",
 )
 username = "@dreambs3"
-handler = logging.FileHandler("/home/ubuntu/info.log")
+handler = logging.FileHandler("info.log")
 handler.setLevel("INFO")
 logging.getLogger().addHandler(handler)
 logging.info("starting")
@@ -138,6 +138,11 @@ def handle_item(item: bytes) -> None:
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)
     start_time = time.time()
+    if args.blob.get("feedforward"):
+        loss = feed_forward.generate(args)
+        feedforward_path = f"output/single/{slug}/progress.png"
+        post(round(time.time() - start_time), blob, loss, feedforward_path)
+        return
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)
@@ -150,7 +155,7 @@ def handle_item(item: bytes) -> None:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
     post(round(time.time() - start_time), blob, loss, f"{path}/{fname}")
-
+    return 
 
 if __name__ == "__main__":
     backoff = 60

@@ -6,7 +6,7 @@ echo "downloading clip..."
 git clone https://github.com/openai/CLIP
 echo "downloading this other stuff"
 
-#git clone https://github.com/CompVis/taming-transformers
+git clone https://github.com/CompVis/taming-transformers
 python3.9 -m pip install ftfy regex tqdm omegaconf pytorch-lightning torch
 python3.9 -m pip install kornia
 python3.9 -m pip install einops
