@@ -118,7 +118,7 @@ def handle_item(item: bytes) -> None:
     try:
         settings = json.loads(blob["prompt"])
         assert isinstance(settings, dict)
-        args = clipart.base_args.with_update({"max_iterations": 200}).with_update(
+        args = clipart.base_args.with_update({"max_iterations": 220}).with_update(
             settings
         )
         video = settings.get("video", False)
