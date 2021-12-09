@@ -161,7 +161,7 @@ class Prompt(nn.Module):
         )
 
 
-def generate(args: "BetterNamespace") -> None:
+def generate(args: "BetterNamespace") -> float:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
@@ -306,7 +306,7 @@ def generate(args: "BetterNamespace") -> None:
         opt.step()
         with torch.no_grad():
             z.copy_(z.maximum(z_min).minimum(z_max))
-        return loss
+        return float(loss)
 
     i = 0
     try:
@@ -322,7 +322,7 @@ def generate(args: "BetterNamespace") -> None:
                 pbar.update(1)
     except KeyboardInterrupt:
         pass
-    return loss
+    return float(loss)
     # steps_without_checkin = 0
     # with tqdm() as pbar:
     #     lossAll = []

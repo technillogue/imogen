@@ -21,4 +21,4 @@ COPY ./download_modals.sh .
 RUN ./download_modals.sh
 COPY --from=libbuilder /app/venv/lib/python3/site-packages /app/taming-transformers /app/CLIP /app/
 COPY ./read_redis.py ./main_ganclip_hacking.py /app/ 
-ENTRYPOINT ["/usr/bin/python3", "/app/ganclip_functional.py"]
+ENTRYPOINT ["/usr/bin/python3", "/app/read_redis.py"]

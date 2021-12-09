@@ -1,5 +1,6 @@
 #!/usr/bin/python3.9
 # pylint: disable=consider-using-with,subprocess-run-check
+import cProfile
 import json
 import logging
 import os
@@ -7,14 +8,14 @@ import subprocess
 import sys
 import time
 import traceback
-import cProfile
+
 import redis
 import requests
 import TwitterAPI as t
-import mk_video
 
 # import main_ganclip_hacking as clipart
 import better_imagegen as clipart
+import mk_video
 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
@@ -33,8 +34,8 @@ logging.debug("debug")
 tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 # Cause tee's stdin to get a copy of our stdin/stdout (as well as that
 # of any child processes we spawn)
-os.dup2(tee.stdin.fileno(), sys.stdout.fileno())
-os.dup2(tee.stdin.fileno(), sys.stderr.fileno())
+os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
+os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
 signal_url = "https://imogen.fly.dev"
 # old_url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
@@ -46,10 +47,12 @@ except IndexError:
     # "redis://:Ing2ODJrcXA2bXZqOWQ1NDMia953abbc82e1f4b9c47158d739526833d1006263@imogen.redis.fly.io:10079"
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
-r = redis.Redis(host=host, port=port, password=password)
+r = redis.Redis(host=host, port=int(port), password=password)
 
 
-def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> None:
+def post(
+    elapsed: float, prompt_blob: dict, loss: float, fname: str = "progress.jpg"
+) -> None:
     minutes, seconds = divmod(elapsed, 60)
     f = open(fname, mode="rb")
     message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate, {loss} loss, v{clipart.version}."
@@ -63,28 +66,40 @@ def post(elapsed: float, prompt_blob: dict, loss: str, fname="progress.jpg") -> 
         },
         files={"image": f},
     )
-    media_resp = twitter_api.request(
-        "media/upload", None, {"media": open(fname, mode="rb").read()}
-    )
+    if not fname.endswith("mp4"):
+        media_resp = twitter_api.request(
+            "media/upload", None, {"media": open(fname, mode="rb").read()}
+        )
+    else:
+        bytes_sent = 0
+        total_bytes = os.path.getsize(fname)
+        file = open(fname, "rb")
+        r = twitter_api.request(
+            "media/upload",
+            {"command": "INIT", "media_type": "video/mp4", "total_bytes": total_bytes},
+        )
 
-    # bytes_sent = 0
-    # total_bytes = os.path.getsize(VIDEO_FILENAME)
-    # file = open(VIDEO_FILENAME, 'rb')
-    # r = api.request('media/upload', {'command':'INIT', 'media_type':'video/mp4', 'total_bytes':total_bytes})
-    # check_status(r)
+        media_id = r.json()["media_id"]
+        segment_id = 0
 
-    # media_id = r.json()['media_id']
-    # segment_id = 0
+        while bytes_sent < total_bytes:
+            chunk = file.read(4 * 1024 * 1024)
+            r = twitter_api.request(
+                "media/upload",
+                {
+                    "command": "APPEND",
+                    "media_id": media_id,
+                    "segment_index": segment_id,
+                },
+                {"media": chunk},
+            )
+            segment_id = segment_id + 1
+            bytes_sent = file.tell()
+            logging.debug("[" + str(total_bytes) + "]", str(bytes_sent))
 
-    # while bytes_sent < total_bytes:
-    # 	chunk = file.read(4*1024*1024)
-    # 	r = api.request('media/upload', {'command':'APPEND', 'media_id':media_id, 'segment_index':segment_id}, {'media':chunk})
-    # 	check_status(r)
-    # 	segment_id = segment_id + 1
-    # 	bytes_sent = file.tell()
-    # 	print('[' + str(total_bytes) + ']', str(bytes_sent))
-
-    # r = api.request('media/upload', {'command':'FINALIZE', 'media_id':media_id})
+        media_resp = twitter_api.request(
+            "media/upload", {"command": "FINALIZE", "media_id": media_id}
+        )
     try:
         media = media_resp.json()
         media_id = media["media_id"]
@@ -133,7 +148,7 @@ def handle_item(item: bytes) -> None:
             )
     params = blob.get("params", {})
     if params.get("init_image"):
-        open(params["init_image"], "wb").write(r.get(params["init_image"]))
+        open(params["init_image"], "wb").write(r[params["init_image"]])
     args = args.with_update(blob.get("params", {}))
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)
@@ -155,10 +170,11 @@ def handle_item(item: bytes) -> None:
 
 
 if __name__ == "__main__":
-    backoff = 60
+    backoff = 60.0
     while 1:
         try:
-            item = r.lindex("prompt_queue", 0)
+            # not sure what mypy's up to here
+            item = r.lindex("prompt_queue", 0)  # type: bytes
             print(item)
             if not item:
                 time.sleep(60)
@@ -175,8 +191,9 @@ if __name__ == "__main__":
             backoff = 60
         except:  # pylint: disable=bare-except
             error_message = traceback.format_exc()
-            print(item)
-            admin(item)
+            if item:
+                print(item)
+                admin(item)
             print(error_message)
             admin(error_message)
             time.sleep(backoff)
