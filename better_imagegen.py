@@ -234,6 +234,11 @@ def generate(args: "BetterNamespace") -> None:
     ]
     prompt_queue = args.prompts[2:]
     is_crossfade = len(args.prompts) > 1
+    # iterations = (
+    #     (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
+    #     if is_crossfade
+    #     else args.max_iterations
+    # )
 
     @torch.no_grad()
     def crossfade_prompts(

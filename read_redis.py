@@ -25,7 +25,7 @@ twitter_api = t.TwitterAPI(
     api_version="1.1",
 )
 username = "@dreambs3"
-handler = logging.FileHandler("/home/ubuntu/info.log")
+handler = logging.FileHandler("info.log")
 handler.setLevel("INFO")
 logging.getLogger().addHandler(handler)
 logging.info("starting")
