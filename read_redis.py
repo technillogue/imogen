@@ -147,7 +147,7 @@ def handle_item(item: bytes) -> None:
             post(round(time.time() - start_time), blob, loss, feedforward_path)
             return
         except: #pylint: disable=bare-except
-            pass
+            traceback.print_exc()
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)
