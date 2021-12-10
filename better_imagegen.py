@@ -1,3 +1,4 @@
+#!/usr/bin/python3.9
 # import warnings
 # warnings.simplefilter("ignore")
 import pdb
@@ -296,7 +297,7 @@ def generate(args: "BetterNamespace") -> float:
             raise IndexError
         return result
 
-    def train(i: int) -> None:
+    def train(i: int) -> float:
         opt.zero_grad()
         lossAll = ascend_txt(i, z)
         if i % args.display_freq == 0:
