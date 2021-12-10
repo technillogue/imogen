@@ -181,6 +181,8 @@ if __name__ == "__main__":
             # r.rpoplpush("prompt_queue", "processing-{host}") # ttl?
             # r.lrem("processing-{host}"
             backoff = 60
+        except redis.exceptions.ConnectionError:
+            continue
         except:  # pylint: disable=bare-except
             error_message = traceback.format_exc()
             print(item)
