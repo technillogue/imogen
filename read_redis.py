@@ -138,10 +138,11 @@ def handle_item(item: bytes) -> None:
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)
     start_time = time.time()
-    if args.blob.get("feedforward"):
+    if blob.get("feedforward"):
         try:
-            from feed_forward_vqgan_clip import main as feedforward
-            loss = feed_forward.generate(args)
+            sys.path.append("feed_forward_vqgan_clip")
+            import main as feedforward
+            loss = feed_forward.generate(blob)
             feedforward_path = f"output/single/{slug}/progress.png"
             post(round(time.time() - start_time), blob, loss, feedforward_path)
             return
