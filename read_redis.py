@@ -57,8 +57,9 @@ def post(
     minutes, seconds = divmod(elapsed, 60)
     f = open(fname, mode="rb")
     message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate, {loss} loss, v{clipart.version}."
+    url = prompt_blob.get("url", signal_url)
     requests.post(
-        f"{signal_url}/attachment",
+        f"{url}/attachment",
         params={
             "message": message,
             "destination": prompt_blob["callback"],
