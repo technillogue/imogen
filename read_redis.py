@@ -139,10 +139,14 @@ def handle_item(item: bytes) -> None:
     print(args)
     start_time = time.time()
     if args.blob.get("feedforward"):
-        loss = feed_forward.generate(args)
-        feedforward_path = f"output/single/{slug}/progress.png"
-        post(round(time.time() - start_time), blob, loss, feedforward_path)
-        return
+        try:
+            from feed_forward_vqgan_clip import main as feedforward
+            loss = feed_forward.generate(args)
+            feedforward_path = f"output/single/{slug}/progress.png"
+            post(round(time.time() - start_time), blob, loss, feedforward_path)
+            return
+        except: #pylint: disable=bare-except
+            pass
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)
