@@ -41,26 +41,3 @@ try:
 except KeyboardInterrupt:
     api.request("statuses/update", {"status": "[sleepy beep boop noises"])
 
-# for item in stream:
-#     print(item)
-#     user = item.get("user", {}).get("screen_name")
-#     status_id = item.get("id")
-#     text = item.get("text")
-#     if user and status_id and text:
-#         args = clipart.base_args.with_update(
-#             {"text": text.removeprefix(username).strip()}
-#         )
-#         clipart.generate(args)
-#         f = open("progress.png", mode="rb").read()
-#         media = api.request("media/upload", None, {"media": f}).json()
-#         media_id = media["media_id"]
-#         post = {
-#             "status": "@" + user,
-#             "in_reply_to_status_id": status_id,
-#             "media_ids": media_id,
-#         }
-#         req = api.request("statuses/update", post)
-#         try:
-#             print(req.json())
-#         except json.JSONDecodeError:
-#             print(req.text)
