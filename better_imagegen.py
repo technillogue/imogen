@@ -259,7 +259,7 @@ def generate(args: "BetterNamespace") -> float:
                 first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
             )
             prompts[1] = Prompt(
-                second.embed, waxing_weight, dwelt=second.dwelt, tag=first.tag
+                second.embed, waxing_weight, dwelt=second.dwelt, tag=second.tag
             )
         else:
             prompts.pop(0)
