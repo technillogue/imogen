@@ -35,6 +35,19 @@ def video(root: str = "") -> None:
     p.wait()
     print("The video is ready")
 
+# ffmpeg \                                         
+#     -re \
+#     -framerate 10 \
+#     -stream_loop -1 \
+#     -f image2 \
+#     -i "progress.png" \
+#     -c:v libx264 \
+#     -preset superfast \
+#     -tune zerolatency \
+#     -pix_fmt yuv420p \
+#     -s 1000x1000 \
+#     -r 25 \
+#     -f flv  "rtmp://live-fra.twitch.tv/app/STREAM_KEY"
 
 if __name__=="__main__":
     try:

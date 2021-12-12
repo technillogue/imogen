@@ -263,6 +263,9 @@ def generate(args: "BetterNamespace") -> float:
             )
         else:
             prompts.pop(0)
+            # ???
+            # prompt = r.lpop("twitch_queue")
+            # ???
             if prompt_queue:
                 next_text = prompt_queue.pop(0)
                 print("next text: ", next_text)
