@@ -38,7 +38,7 @@ tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
 os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
-signal_url = "https://imogen.fly.dev"
+signal_url = "https://imogen-renaissance.fly.dev"
 # old_url = "redis://:ImVqcG9uMTdqMjc2MWRncjQi8a6c817565c7926c7c7e971b4782cf96a705bb20@forest-dev.redis.fly.io:10079"
 requests.post(f"{signal_url}/admin", params={"message": "starting read_redis"})
 try:
@@ -157,14 +157,14 @@ def handle_item(item: bytes) -> None:
     start_time = time.time()
     if blob.get("feedforward"):
         try:
-            sys.path.append("feed_forward_vqgan_clip")
             import main as feedforward
-            loss = feed_forward.generate(blob)
+            loss = feedforward.generate(blob)
             feedforward_path = f"output/single/{slug}/progress.png"
             post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
             return
         except: #pylint: disable=bare-except
             traceback.print_exc()
+            admin(traceback.format_exc())
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)
