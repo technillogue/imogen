@@ -227,7 +227,7 @@ def generate(args: "BetterNamespace") -> float:
         print(f"{prompt.tag}: dwell {prompt.dwelt}, weight {prompt.weight}. ", end="")
 
     def embed(text: str) -> Tensor:
-        return perceptor.encode_text(clip.tokenize(text).to(device)).float()
+        return perceptor.encode_text(clip.tokenize(text, truncate=True).to(device)).float()
 
     prompts = [
         Prompt(embed(text), weight=weight, tag=text).to(device)
