@@ -150,7 +150,7 @@ def handle_item(item: bytes) -> None:
             )
     params = blob.get("params", {})
     if params.get("init_image"):
-        open("input"/params["init_image"], "wb").write(r[params["init_image"]])
+        open(params["init_image"], "wb").write(r[params["init_image"]])
     args = args.with_update(blob.get("params", {}))
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)
@@ -164,6 +164,17 @@ def handle_item(item: bytes) -> None:
         except: #pylint: disable=bare-except
             traceback.print_exc()
             admin(traceback.format_exc())
+            return
+    if blob.get("feedforward_fast"):
+        try:
+            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
+            loss = feedforward.generate_forward(blob, out_path=feedforward_path)
+            post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
+            return
+        except: #pylint: disable=bare-except
+            traceback.print_exc()
+            admin(traceback.format_exc())
+            return
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)

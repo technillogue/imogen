@@ -738,7 +738,6 @@ def train(config_file, single_prompt=None):
                     f"epoch:{epoch:03d}, step:{step:05d}, avg_loss:{avg_loss:.3f}, loss:{loss.item():.3f}, dists:{dists.item():.3f}, div:{div.item():.3f}"
                 )
                 grid = torchvision.utils.make_grid(xr.cpu(), nrow=bs)
-                # maybe config.folder / slug(single_prompt) / progress.png
                 TF.to_pil_image(grid).save(folder_path / slug / "progress.png")
                 TF.to_pil_image(grid).save(os.path.join(config.folder, "progress.png"))
                 TF.to_pil_image(grid).save(
@@ -842,8 +841,8 @@ def train(config_file, single_prompt=None):
 def generate(args: dict) -> float:
     return train("configs/single.yaml", args["prompt"])
 
-def generate_forward(args: dict) -> None:
-    return test("results/single/model.th", args["prompt"])
+def generate_forward(args: dict, **kwargs) -> None:
+    return test("results/single/model.th", args["prompt"], **kwargs)
 
 
 def test(
