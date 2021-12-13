@@ -167,7 +167,7 @@ def handle_item(item: bytes) -> None:
             return
     if blob.get("feedforward_fast"):
         try:
-            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
+            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}.png"
             loss = feedforward.generate_forward(blob, out_path=feedforward_path)
             post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
             return
