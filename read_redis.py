@@ -16,7 +16,7 @@ import TwitterAPI as t
 import better_imagegen as clipart
 import mk_video
 
-# from feed_forward_vqgan_clip import main as feedforward
+import feedforward
 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
@@ -150,14 +150,13 @@ def handle_item(item: bytes) -> None:
             )
     params = blob.get("params", {})
     if params.get("init_image"):
-        open(params["init_image"], "wb").write(r[params["init_image"]])
+        open("input"/params["init_image"], "wb").write(r[params["init_image"]])
     args = args.with_update(blob.get("params", {}))
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)
     start_time = time.time()
     if blob.get("feedforward"):
         try:
-            import main as feedforward
             feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
             loss = feedforward.generate(blob)
             post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
