@@ -8,15 +8,15 @@ import subprocess
 import sys
 import time
 import traceback
+from typing import Optional
 
 import redis
 import requests
 import TwitterAPI as t
 
 import better_imagegen as clipart
-import mk_video
-
 import feedforward
+import mk_video
 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
@@ -61,8 +61,8 @@ def post(
     f = open(fname, mode="rb")
     message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate,"
     if loss:
-        message += "{loss} loss,"
-    message += " v{clipart.version}."
+        message += f"{loss} loss,"
+    message += f" v{clipart.version}."
     url = prompt_blob.get("url", signal_url)
     requests.post(
         f"{url}/attachment",
