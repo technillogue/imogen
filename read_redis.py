@@ -52,11 +52,17 @@ r = redis.Redis(host=host, port=int(port), password=password)
 
 
 def post(
-    elapsed: float, prompt_blob: dict, loss: float, fname: str = "progress.jpg"
+    elapsed: float,
+    prompt_blob: dict,
+    fname: str = "progress.jpg",
+    loss: Optional[float] = None,
 ) -> None:
     minutes, seconds = divmod(elapsed, 60)
     f = open(fname, mode="rb")
-    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate, {loss} loss, v{clipart.version}."
+    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate,"
+    if loss:
+        message += "{loss} loss,"
+    message += " v{clipart.version}."
     url = prompt_blob.get("url", signal_url)
     requests.post(
         f"{url}/attachment",
@@ -143,7 +149,9 @@ def handle_item(item: bytes) -> None:
         maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
         video = len(maybe_prompt_list) > 1
         if video:
-            args = clipart.base_args.with_update({"prompts": maybe_prompt_list, "max_iterations":1000})
+            args = clipart.base_args.with_update(
+                {"prompts": maybe_prompt_list, "max_iterations": 1000}
+            )
         else:
             args = clipart.base_args.with_update(
                 {"text": blob["prompt"], "max_iterations": 200}
@@ -156,25 +164,17 @@ def handle_item(item: bytes) -> None:
     print(args)
     start_time = time.time()
     if blob.get("feedforward"):
-        try:
-            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
-            loss = feedforward.generate(blob)
-            post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
-            return
-        except: #pylint: disable=bare-except
-            traceback.print_exc()
-            admin(traceback.format_exc())
-            return
+        feedforward_path = (
+            f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
+        )
+        loss = feedforward.generate(blob)
+        post(round(time.time() - start_time), blob, feedforward_path, round(loss, 4))
+        return
     if blob.get("feedforward_fast"):
-        try:
-            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}.png"
-            loss = feedforward.generate_forward(blob, out_path=feedforward_path)
-            post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
-            return
-        except: #pylint: disable=bare-except
-            traceback.print_exc()
-            admin(traceback.format_exc())
-            return
+        feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}.png"
+        loss = feedforward.generate_forward(blob, out_path=feedforward_path)
+        post(round(time.time() - start_time), blob, feedforward_path)
+        return
     if args.profile:
         with cProfile.Profile() as profiler:
             loss = clipart.generate(args)
@@ -186,8 +186,9 @@ def handle_item(item: bytes) -> None:
         if video:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
-    post(round(time.time() - start_time), blob, round(loss, 4), f"{path}/{fname}")
+    post(round(time.time() - start_time), blob, f"{path}/{fname}", round(loss, 4))
     return
+
 
 if __name__ == "__main__":
     backoff = 60.0
