@@ -315,15 +315,15 @@ def generate(args: "BetterNamespace") -> float:
     i = 0
     try:
         while 1:
-            with tqdm() as pbar:
-                try:
-                    loss = train(i)
-                except IndexError:
-                    break
-                if i == args.max_iterations:
-                    break
-                i += 1
-                pbar.update(1)
+            #with tqdm() as pbar:
+            try:
+                loss = train(i)
+            except IndexError:
+                break
+            if i == args.max_iterations:
+                break
+            i += 1
+                #pbar.update(1)
     except KeyboardInterrupt:
         pass
     return float(loss)
@@ -374,6 +374,7 @@ base_args = BetterNamespace(
         # "faerie rave",
         # "a completely normal forest with no supernatural entities in sight",
     ],
+    #text: override prompt
     root="moonlit-dream-rave-forest",  # change to a prompt slug
     image_prompts=[],
     noise_prompt_seeds=[],
@@ -389,7 +390,7 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=10,
     seed=0,
-    max_iterations=-1,
+    max_iterations=300,
     fade=50,  # @param {type:"number"}
     dwell=50,  # @param {type: "number"}
     profile=False,

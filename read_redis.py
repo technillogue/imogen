@@ -143,7 +143,7 @@ def handle_item(item: bytes) -> None:
         maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
         video = len(maybe_prompt_list) > 1
         if video:
-            args = clipart.base_args.with_update({"prompts": maybe_prompt_list})
+            args = clipart.base_args.with_update({"prompts": maybe_prompt_list, "max_iterations":1000})
         else:
             args = clipart.base_args.with_update(
                 {"text": blob["prompt"], "max_iterations": 200}
@@ -158,8 +158,8 @@ def handle_item(item: bytes) -> None:
     if blob.get("feedforward"):
         try:
             import main as feedforward
+            feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
             loss = feedforward.generate(blob)
-            feedforward_path = f"output/single/{slug}/progress.png"
             post(round(time.time() - start_time), blob, round(loss, 4), feedforward_path)
             return
         except: #pylint: disable=bare-except
@@ -201,12 +201,14 @@ if __name__ == "__main__":
             backoff = 60
         except redis.exceptions.ConnectionError:
             continue
-        except:  # pylint: disable=bare-except
+        except Exception as e:  # pylint: disable=bare-except
             error_message = traceback.format_exc()
             if item:
                 print(item)
                 admin(item)
             print(error_message)
             admin(error_message)
+            if "out of memory" in str(e):
+                sys.exit(137)
             time.sleep(backoff)
             backoff *= 1.5

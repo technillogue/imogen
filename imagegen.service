@@ -4,7 +4,10 @@ Description=read redis
 [Service]
 Type=simple
 ExecStart=/usr/bin/python3.9 /home/sylv/imogen/read_redis.py 
+WorkingDirectory=/home/sylv/imogen
+User=sylv 
 Restart=always
 RestartSec=5s
+
 [Install]
 WantedBy=mult-user.target
