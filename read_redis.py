@@ -159,6 +159,7 @@ def handle_item(item: bytes) -> None:
     params = blob.get("params", {})
     if params.get("init_image"):
         open(params["init_image"], "wb").write(r[params["init_image"]])
+    params["video"] = video
     args = args.with_update(blob.get("params", {}))
     path = f"output/{clipart.mk_slug(args.prompts)}"
     print(args)

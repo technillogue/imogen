@@ -293,9 +293,9 @@ def generate(args: "BetterNamespace") -> float:
 
             # maybe we want to put this in a separate calculate_loss function
             # that handles checking if we're fading?
-
-        with torch.no_grad():
-            TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.png")
+        if args.video:
+            with torch.no_grad():
+                TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/steps/{i:04}.png")
         if not result:
             raise IndexError
         return result
@@ -389,11 +389,12 @@ base_args = BetterNamespace(
     cutn=64,
     cut_pow=1.0,
     display_freq=10,
-    seed=0,
+    seed=None,
     max_iterations=300,
     fade=50,  # @param {type:"number"}
     dwell=50,  # @param {type: "number"}
-    profile=False,
+    profile=False, # cprofile
+    video=False 
 )
 if __name__ == "__main__":
     generate(base_args)
