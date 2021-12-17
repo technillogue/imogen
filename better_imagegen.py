@@ -100,18 +100,22 @@ class MakeCutouts(nn.Module):
             K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
         )
         self.noise_factor = 0.1
+        self.cutout_sizes = []
 
     def forward(self, input: Tensor) -> Tensor:
         sideY, sideX = input.shape[2:4]
         max_size = min(sideX, sideY)
         min_size = min(sideX, sideY, self.cut_size)
+        if not self.cutout_sizes:
+            for _ in range(self.cutn):
+                size = int(
+                    torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
+                )
+                offsetx = torch.randint(0, sideX - size + 1, ())
+                offsety = torch.randint(0, sideY - size + 1, ())
+                self.cutout_sizes.append((size, offsetx, offsety))
         cutouts = []
-        for _ in range(self.cutn):
-            size = int(
-                torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
-            )
-            offsetx = torch.randint(0, sideX - size + 1, ())
-            offsety = torch.randint(0, sideY - size + 1, ())
+        for size, offsetx, offsety  in range(self.cutn):
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
             resampled = resample(cutout, (self.cut_size, self.cut_size))
             cutouts.append(resampled)
