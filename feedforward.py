@@ -838,11 +838,11 @@ def train(config_file, single_prompt=None):
             step += 1
     return float(loss)
 
-def generate(args: dict) -> float:
-    return train("configs/single.yaml", args["prompt"])
+def generate(prompt: str) -> float:
+    return train("configs/single.yaml", prompt)
 
-def generate_forward(args: dict, **kwargs) -> None:
-    return test("results/single/model.th", args["prompt"], **kwargs)
+def generate_forward(prompt: str, out_path: str) -> None:
+    return test("results/single/model.th", prompt, out_path=out_path)
 
 
 def test(

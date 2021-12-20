@@ -1,6 +1,7 @@
 #!/usr/bin/python3.9
-# pylint: disable=consider-using-with,subprocess-run-check
+# pylint: disable=subprocess-run-check
 import cProfile
+import dataclasses
 import json
 import logging
 import os
@@ -11,8 +12,10 @@ import traceback
 from typing import Optional
 
 import psycopg
+import redis
 import requests
 import TwitterAPI as t
+from psycopg.rows import class_row
 
 import better_imagegen as clipart
 import feedforward
@@ -38,8 +41,8 @@ tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
 os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
-signal_url = "https://imogen-renaissance.fly.dev"
-requests.post(f"{signal_url}/admin", params={"message": "starting read_redis"})
+admin_signal_url = "https://imogen-renaissance.fly.dev"
+
 try:
     url = sys.argv[1]
 except IndexError:
@@ -50,48 +53,209 @@ host, port = rest.split(":")
 r = redis.Redis(host=host, port=int(port), password=password)
 
 
-def post(
-    elapsed: float,
-    prompt_blob: dict,
-    fname: str = "progress.jpg",
-    loss: Optional[float] = None,
-) -> None:
-    minutes, seconds = divmod(elapsed, 60)
-    f = open(fname, mode="rb")
-    message = f"{prompt_blob['prompt']}\nTook {minutes}m{seconds}s to generate,"
-    if loss:
-        message += f"{loss} loss,"
-    message += f" v{clipart.version}."
-    url = prompt_blob.get("url", signal_url)
+def admin(msg: str) -> None:
     requests.post(
-        f"{url}/attachment",
-        params={
-            "message": message,
-            "destination": prompt_blob["callback"],
-            "author": prompt_blob.get("author", ""),
-            "timestamp": prompt_blob.get("timestamp", ""),
-        },
+        f"{admin_signal_url}/admin",
+        params={"message": str(msg)},
+    )
+
+
+def stop() -> None:
+    if os.getenv("POWEROFF"):
+        admin("powering down worker")
+        subprocess.run(["sudo", "poweroff"])
+    else:
+        time.sleep(60)
+
+
+@dataclasses.dataclass
+class Prompt:
+    prompt_id: int
+    prompt: str
+    url: str
+    slug: str = ""
+    params: str = ""
+    param_dict: dict = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        try:
+            self.param_dict = json.loads(self.params)
+            assert isinstance(self.param_dict, dict)
+        except (json.JSONDecodeError, AssertionError):
+            self.param_dict = {}
+        self.slug = clipart.mk_slug(self.prompt)
+
+@dataclasses.dataclass
+class Result:
+    elapsed: int
+    loss: float
+    filepath: str
+
+
+def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
+    conn.execute(
+        """UPDATE prompt_queue SET status='pending', assigned_at=null
+        WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
+    )  # maybe this is a trigger
+    paid = ""  # "AND paid=TRUE" # should be used by every instance except the first
+    maybe_id = conn.execute(
+        f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY ts ASC, paid DESC LIMIT 1;"
+    ).fetchone()
+    if not maybe_id:
+        return None
+    prompt_id = maybe_id[0]
+    maybe_prompt = conn.execute(
+        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE ts = $1 RETURNING id, prompt, params, url;",
+        prompt_id,
+        row_factory=class_row(Prompt),
+    ).fetchone()
+    return maybe_prompt
+
+
+def main() -> None:
+    admin("starting read_redis")
+    # clear failed instances
+    # try to get an id. if we can't, there's no work, and we should stop
+    # try to claim it. if we can't, someone else took it, and we should try again
+    # generate the prompt
+    backoff = 60.0
+    # catch some database connection errors
+    with psycopg.connect(os.getenv("DATABASE_URL")) as conn:
+        while 1:
+            # try to claim
+            prompt = get_prompt(conn)
+            if not prompt:
+                stop()
+                continue
+            print(prompt)
+            try:
+                result = handle_item(prompt)
+                post(result, prompt)
+                # success
+                conn.execute(
+                    "UPDATE prompt_queue SET status='done' WHERE ts=$1;",
+                    prompt.prompt_id,
+                )
+                backoff = 60
+            except Exception as e:  # pylint: disable=broad-except
+                error_message = traceback.format_exc()
+                if prompt:
+                    print(prompt)
+                    admin(repr(prompt))
+                print(error_message)
+                admin(error_message)
+                if "out of memory" in str(e):
+                    sys.exit(137)
+                time.sleep(backoff)
+                backoff *= 1.5
+
+
+# parse raw parameters
+# parse prompt list
+# it's either a specific function or the default one
+# for imagegen, if there's an initial image, download it from postgres or redis
+# pick a slug
+# pass maybe raw parameters and initial parameters to the function to get loss and a file
+# if it's a list of prompts, generate a video using the slug
+# (ideally the function takes care of this though and writes directly to ffmpeg)
+# at this point ideally we need to mark that we generated it, but it wasn't sent yet.
+# (maybe move it to goog's s3)
+# make a message with the prompt, time, loss, and version
+# upload the file, id, and message to imogen based on the url. ideally retry on non-200
+# (imogen looks up destination, author, timestamp to send).
+# upload to twitter. if it fails, maybe log video size
+
+
+def handle_item(prompt: Prompt) -> Result:
+    video = False
+    try:
+        settings = json.loads(prompt.prompt)
+        assert isinstance(settings, dict)
+        args = clipart.base_args.with_update({"max_iterations": 221}).with_update(
+            settings
+        )
+        video = settings.get("video", False)
+    except (json.JSONDecodeError, AssertionError):
+        maybe_prompt_list = [p.strip() for p in prompt.prompt.split("//")]
+        video = len(maybe_prompt_list) > 1
+        if video:
+            args = clipart.base_args.with_update(
+                {"prompts": maybe_prompt_list, "max_iterations": 1000}
+            )
+        else:
+            args = clipart.base_args.with_update(
+                {"text": prompt.prompt, "max_iterations": 221}
+            )
+    if prompt.param_dict.get("init_image"):
+        # download the image from redis
+        open(prompt.param_dict["init_image"], "wb").write(
+            r[prompt.param_dict["init_image"]]
+        )
+    prompt.param_dict["video"] = video
+    args = args.with_update(prompt.param_dict)
+    print(args)
+    path = f"output/{clipart.mk_slug(args.prompts)}"
+    feedforward_path = ""
+    start_time = time.time()
+    if prompt.param_dict.get("feedforward"):
+        feedforward_path = f"results/single/{prompt.slug}/progress.png"
+        loss = feedforward.generate(prompt.prompt)
+    elif prompt.param_dict.get("feedforward_fast"):
+        feedforward_path = f"results/single/{prompt.slug}.png"
+        loss = feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
+    elif args.profile:
+        with cProfile.Profile() as profiler:
+            loss = clipart.generate(args)
+        profiler.dump_stats(f"profiling/{clipart.version}.stats")
+        print("generated with stats")
+    else:
+        loss = clipart.generate(args)
+        print("generated")
+        if video:
+            mk_video.video(path)
+    fname = "video.mp4" if video else "progress.png"
+    return Result(
+        elapsed=round(time.time() - start_time),
+        filepath=feedforward_path or f"{path}/{fname}",
+        loss=round(loss, 4),
+    )
+
+
+def post(result: Result, prompt: Prompt) -> None:
+    minutes, seconds = divmod(result.elapsed, 60)
+    f = open(result.filepath, mode="rb")
+    message = f"{prompt.prompt}\nTook {minutes}m{seconds}s to generate,"
+    if result.loss:
+        message += f"{result.loss} loss,"
+    message += f" v{clipart.version}."
+    requests.post(
+        f"{prompt.url or admin_signal_url}/attachment",
+        params={"message": message, "id": str(prompt.prompt_id)},
         files={"image": f},
     )
-    if not fname.endswith("mp4"):
+    post_tweet(result, prompt)
+
+
+def post_tweet(result: Result, prompt: Prompt) -> None:
+    if not result.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
-            "media/upload", None, {"media": open(fname, mode="rb").read()}
+            "media/upload", None, {"media": open(result.filepath, mode="rb").read()}
         )
     else:
         bytes_sent = 0
-        total_bytes = os.path.getsize(fname)
-        file = open(fname, "rb")
-        r = twitter_api.request(
+        total_bytes = os.path.getsize(result.filepath)
+        file = open(result.filepath, "rb")
+        init_req = twitter_api.request(
             "media/upload",
             {"command": "INIT", "media_type": "video/mp4", "total_bytes": total_bytes},
         )
 
-        media_id = r.json()["media_id"]
+        media_id = init_req.json()["media_id"]
         segment_id = 0
 
         while bytes_sent < total_bytes:
             chunk = file.read(4 * 1024 * 1024)
-            r = twitter_api.request(
+            twitter_api.request(
                 "media/upload",
                 {
                     "command": "APPEND",
@@ -102,8 +266,6 @@ def post(
             )
             segment_id = segment_id + 1
             bytes_sent = file.tell()
-            logging.debug("[" + str(total_bytes) + "]", str(bytes_sent))
-
         media_resp = twitter_api.request(
             "media/upload", {"command": "FINALIZE", "media_id": media_id}
         )
@@ -111,7 +273,7 @@ def post(
         media = media_resp.json()
         media_id = media["media_id"]
         twitter_post = {
-            "status": prompt_blob["prompt"],
+            "status": prompt.prompt,
             "media_ids": media_id,
         }
         twitter_api.request("statuses/update", twitter_post)
@@ -123,124 +285,5 @@ def post(
             pass
 
 
-def admin(msg: str) -> None:
-    requests.post(
-        f"{signal_url}/admin",
-        params={"message": str(msg)},
-    )
-
-
-def handle_item(item: bytes) -> None:
-    try:
-        blob = json.loads(item)
-    except (json.JSONDecodeError, TypeError):
-        logging.info(item)
-        return
-    video = False
-    try:
-        settings = json.loads(blob["prompt"])
-        assert isinstance(settings, dict)
-        args = clipart.base_args.with_update({"max_iterations": 220}).with_update(
-            settings
-        )
-        video = settings.get("video", False)
-    except (json.JSONDecodeError, AssertionError):
-        maybe_prompt_list = [p.strip() for p in blob["prompt"].split("//")]
-        video = len(maybe_prompt_list) > 1
-        if video:
-            args = clipart.base_args.with_update(
-                {"prompts": maybe_prompt_list, "max_iterations": 1000}
-            )
-        else:
-            args = clipart.base_args.with_update(
-                {"text": blob["prompt"], "max_iterations": 200}
-            )
-    params = blob.get("params", {})
-    if params.get("init_image"):
-        open(params["init_image"], "wb").write(r[params["init_image"]])
-    params["video"] = video
-    args = args.with_update(blob.get("params", {}))
-    path = f"output/{clipart.mk_slug(args.prompts)}"
-    print(args)
-    start_time = time.time()
-    if blob.get("feedforward"):
-        feedforward_path = (
-            f"results/single/{feedforward.mk_slug(blob['prompt'])}/progress.png"
-        )
-        loss = feedforward.generate(blob)
-        post(round(time.time() - start_time), blob, feedforward_path, round(loss, 4))
-        return
-    if blob.get("feedforward_fast"):
-        feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}.png"
-        loss = feedforward.generate_forward(blob, out_path=feedforward_path)
-        post(round(time.time() - start_time), blob, feedforward_path)
-        return
-    if args.profile:
-        with cProfile.Profile() as profiler:
-            loss = clipart.generate(args)
-        profiler.dump_stats(f"profiling/{clipart.version}.stats")
-        print("generated with stats")
-    else:
-        loss = clipart.generate(args)
-        print("generated")
-        if video:
-            mk_video.video(path)
-    fname = "video.mp4" if video else "progress.png"
-    post(round(time.time() - start_time), blob, f"{path}/{fname}", round(loss, 4))
-    return
-
-
 if __name__ == "__main__":
-    backoff = 60.0
-    with psycopg.connect(os.getenv("DATABASE_URL")) as conn:
-        while 1:
-            conn.execute(
-                """UPDATE prompt_queue SET status='pending', assigned_at=null
-                WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
-            )
-            paid = (
-                "AND paid=TRUE" or ""
-            )  # should be used by every instance except the first
-            prompt_id = conn.execute(
-                f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY ts ASC, paid DESC LIMIT 1;"
-            ).fetchone()[0]
-            if not prompt_id:
-                pass  # sleep? poweroff?
-            prompt, params, url = conn.execute(
-                "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE ts = $1 RETURNING prompt, params, url;",
-                prompt_id
-            ).fetchone()
-            handle_item(prompt, parms, url)
-            conn.execute("UPDATE prompt_queue SET status='done' WHERE ts=$1;", prompt_id)
-
-
-    while 1:
-        try:
-            item = r.lindex("prompt_queue", 0)  # type: bytes
-            print(item)
-            if not item:
-                time.sleep(60)
-                item = r.lindex("prompt_queue", 0)
-                if not item:
-                    if os.getenv("POWEROFF"):
-                        admin("powering down worker")
-                        subprocess.run(["sudo", "poweroff"])
-                    continue
-            handle_item(item)
-            r.lrem("prompt_queue", 1, item)
-            # r.rpoplpush("prompt_queue", "processing-{host}") # ttl?
-            # r.lrem("processing-{host}"
-            backoff = 60
-        except redis.exceptions.ConnectionError:
-            continue
-        except Exception as e:  # pylint: disable=bare-except
-            error_message = traceback.format_exc()
-            if item:
-                print(item)
-                admin(item)
-            print(error_message)
-            admin(error_message)
-            if "out of memory" in str(e):
-                sys.exit(137)
-            time.sleep(backoff)
-            backoff *= 1.5
+    main()

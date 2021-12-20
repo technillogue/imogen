@@ -375,7 +375,6 @@ base_args = BetterNamespace(
         # "a completely normal forest with no supernatural entities in sight",
     ],
     #text: override prompt
-    root="moonlit-dream-rave-forest",  # change to a prompt slug
     image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
