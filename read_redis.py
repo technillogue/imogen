@@ -131,12 +131,14 @@ def admin(msg: str) -> None:
     )
 
 
-def handle_item(item: bytes) -> None:
+def handle_item(
+    generator: Optional[clipart.Generator], item: bytes
+) -> Optional[clipart.Generator]:
     try:
         blob = json.loads(item)
     except (json.JSONDecodeError, TypeError):
         logging.info(item)
-        return
+        return generator
     video = False
     try:
         settings = json.loads(blob["prompt"])
@@ -170,29 +172,34 @@ def handle_item(item: bytes) -> None:
         )
         loss = feedforward.generate(blob)
         post(round(time.time() - start_time), blob, feedforward_path, round(loss, 4))
-        return
+        return None
     if blob.get("feedforward_fast"):
         feedforward_path = f"results/single/{feedforward.mk_slug(blob['prompt'])}.png"
         loss = feedforward.generate_forward(blob, out_path=feedforward_path)
         post(round(time.time() - start_time), blob, feedforward_path)
-        return
+        return None
+    if not generator or not generator.same_model(args):
+        # hopefully purge memory used by previous model
+        del generator
+        generator = clipart.Generator(args)
     if args.profile:
         with cProfile.Profile() as profiler:
-            loss = clipart.generate(args)
+            loss = generator.generate(args)
         profiler.dump_stats(f"profiling/{clipart.version}.stats")
         print("generated with stats")
     else:
-        loss = clipart.generate(args)
+        loss = generator.generate(args)
         print("generated")
         if video:
             mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
     post(round(time.time() - start_time), blob, f"{path}/{fname}", round(loss, 4))
-    return
+    return generator
 
 
 if __name__ == "__main__":
     backoff = 60.0
+    _generator = None
     while 1:
         try:
             # not sure what mypy's up to here
@@ -206,7 +213,7 @@ if __name__ == "__main__":
                         admin("powering down worker")
                         subprocess.run(["sudo", "poweroff"])
                     continue
-            handle_item(item)
+            _generator = handle_item(_generator, item)
             r.lrem("prompt_queue", 1, item)
             # r.rpoplpush("prompt_queue", "processing-{host}") # ttl?
             # r.lrem("processing-{host}"
@@ -217,7 +224,7 @@ if __name__ == "__main__":
             error_message = traceback.format_exc()
             if item:
                 print(item)
-                admin(item)
+                admin(str(item))
             print(error_message)
             admin(error_message)
             if "out of memory" in str(e):
