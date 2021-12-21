@@ -67,7 +67,7 @@ def stop() -> None:
         admin("powering down worker")
         subprocess.run(["sudo", "poweroff"])
     else:
-        time.sleep(60)
+        time.sleep(15)
 
 
 @dataclasses.dataclass
@@ -108,6 +108,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
         return None
     prompt_id = maybe_id[0]
     cursor = conn.cursor(row_factory=class_row(Prompt))
+    logging.info("getting")
     maybe_prompt = cursor.execute(
         "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
         [prompt_id],
@@ -125,7 +126,8 @@ def main() -> None:
     backoff = 60.0
     generator = None
     # catch some database connection errors
-    with psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True) as conn:
+    conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
+    try:
         while 1:
             # try to claim
             prompt = get_prompt(conn)
@@ -153,6 +155,7 @@ def main() -> None:
                 logging.info("set done")
                 backoff = 60
             except Exception as e:  # pylint: disable=broad-except
+                logging.info("caught exception")
                 error_message = traceback.format_exc()
                 if prompt:
                     print(prompt)
@@ -163,7 +166,8 @@ def main() -> None:
                     sys.exit(137)
                 time.sleep(backoff)
                 backoff *= 1.5
-
+    finally:
+        conn.close()
 
 # parse raw parameters
 # parse prompt list
