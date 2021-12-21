@@ -109,7 +109,6 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     maybe_prompt = conn.execute(
         "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = $1 RETURNING id, prompt, params, url;",
         prompt_id,
-        row_factory=class_row(Prompt),
     ).fetchone()
     return maybe_prompt
 
@@ -122,7 +121,10 @@ def main() -> None:
     # generate the prompt
     backoff = 60.0
     # catch some database connection errors
-    with psycopg.connect(utils.get_secret("DATABASE_URL")) as conn:
+    with psycopg.connect(
+        utils.get_secret("DATABASE_URL"),
+        row_factory=class_row(Prompt),
+    ) as conn:
         while 1:
             # try to claim
             prompt = get_prompt(conn)
