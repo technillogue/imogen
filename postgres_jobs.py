@@ -20,6 +20,7 @@ from psycopg.rows import class_row
 import better_imagegen as clipart
 import feedforward
 import mk_video
+import utils
 
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
@@ -121,7 +122,7 @@ def main() -> None:
     # generate the prompt
     backoff = 60.0
     # catch some database connection errors
-    with psycopg.connect(os.getenv("DATABASE_URL")) as conn:
+    with psycopg.connect(utils.get_secret("DATABASE_URL")) as conn:
         while 1:
             # try to claim
             prompt = get_prompt(conn)
