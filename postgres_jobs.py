@@ -85,6 +85,7 @@ class Prompt:
             self.param_dict = {}
         self.slug = clipart.mk_slug(self.prompt)
 
+
 @dataclasses.dataclass
 class Result:
     elapsed: int
@@ -99,13 +100,13 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     )  # maybe this is a trigger
     paid = ""  # "AND paid=TRUE" # should be used by every instance except the first
     maybe_id = conn.execute(
-        f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY ts ASC, paid DESC LIMIT 1;"
+        f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY signal_ts ASC LIMIT 1;"
     ).fetchone()
     if not maybe_id:
         return None
     prompt_id = maybe_id[0]
     maybe_prompt = conn.execute(
-        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE ts = $1 RETURNING id, prompt, params, url;",
+        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = $1 RETURNING id, prompt, params, url;",
         prompt_id,
         row_factory=class_row(Prompt),
     ).fetchone()
@@ -130,10 +131,18 @@ def main() -> None:
             print(prompt)
             try:
                 result = handle_item(prompt)
-                post(result, prompt)
                 # success
+                fmt = """UPDATE prompt_queue SET status='uploading', loss=$1, elapsed_gpu=$2, filename=$3, WHERE id=$4;"""
                 conn.execute(
-                    "UPDATE prompt_queue SET status='done' WHERE ts=$1;",
+                    fmt,
+                    result.loss,
+                    result.elapsed,
+                    result.filepath,
+                    prompt.prompt_id,
+                )
+                post(result, prompt)
+                conn.execute(
+                    "UPDATE prompt_queue SET status='done' WHERE id=$1",
                     prompt.prompt_id,
                 )
                 backoff = 60
