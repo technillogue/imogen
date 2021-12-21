@@ -42,7 +42,7 @@ tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
 os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
-admin_signal_url = "https://imogen-renaissance.fly.dev"
+admin_signal_url = "https://imogen.fly.dev"
 
 try:
     url = sys.argv[1]
@@ -62,6 +62,7 @@ def admin(msg: str) -> None:
 
 
 def stop() -> None:
+    logging.info("stopping")
     if os.getenv("POWEROFF"):
         admin("powering down worker")
         subprocess.run(["sudo", "poweroff"])
@@ -106,25 +107,25 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     if not maybe_id:
         return None
     prompt_id = maybe_id[0]
-    maybe_prompt = conn.execute(
-        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = $1 RETURNING id, prompt, params, url;",
-        prompt_id,
+    cursor = conn.cursor(row_factory=class_row(Prompt))
+    maybe_prompt = cursor.execute(
+        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
+        [prompt_id],
     ).fetchone()
+    logging.info("set assigned")
     return maybe_prompt
 
 
 def main() -> None:
-    admin("starting read_redis")
+    admin("starting postgres_jobs")
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
     # try to claim it. if we can't, someone else took it, and we should try again
     # generate the prompt
     backoff = 60.0
+    generator = None
     # catch some database connection errors
-    with psycopg.connect(
-        utils.get_secret("DATABASE_URL"),
-        row_factory=class_row(Prompt),
-    ) as conn:
+    with psycopg.connect(utils.get_secret("DATABASE_URL")) as conn:
         while 1:
             # try to claim
             prompt = get_prompt(conn)
@@ -133,21 +134,23 @@ def main() -> None:
                 continue
             print(prompt)
             try:
-                result = handle_item(prompt)
+                generator, result = handle_item(generator, prompt)
                 # success
-                fmt = """UPDATE prompt_queue SET status='uploading', loss=$1, elapsed_gpu=$2, filename=$3, WHERE id=$4;"""
-                conn.execute(
-                    fmt,
+                fmt = """UPDATE prompt_queue SET status='uploading', loss=%s, elapsed_gpu=%s, filepath=%s WHERE id=%s;"""
+                params = [
                     result.loss,
                     result.elapsed,
                     result.filepath,
                     prompt.prompt_id,
-                )
+                ]
+                logging.info("set uploading")
+                conn.execute(fmt, params)
                 post(result, prompt)
                 conn.execute(
-                    "UPDATE prompt_queue SET status='done' WHERE id=$1",
-                    prompt.prompt_id,
+                    "UPDATE prompt_queue SET status='done' WHERE id=%s",
+                    [prompt.prompt_id],
                 )
+                logging.info("set done")
                 backoff = 60
             except Exception as e:  # pylint: disable=broad-except
                 error_message = traceback.format_exc()
@@ -178,7 +181,7 @@ def main() -> None:
 # upload to twitter. if it fails, maybe log video size
 
 
-def handle_item(prompt: Prompt) -> Result:
+def handle_item(generator: Optional[clipart.Generator], prompt: Prompt) -> Result:
     video = False
     try:
         settings = json.loads(prompt.prompt)
@@ -215,18 +218,23 @@ def handle_item(prompt: Prompt) -> Result:
     elif prompt.param_dict.get("feedforward_fast"):
         feedforward_path = f"results/single/{prompt.slug}.png"
         loss = feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
-    elif args.profile:
-        with cProfile.Profile() as profiler:
-            loss = clipart.generate(args)
-        profiler.dump_stats(f"profiling/{clipart.version}.stats")
-        print("generated with stats")
     else:
-        loss = clipart.generate(args)
-        print("generated")
-        if video:
-            mk_video.video(path)
+        if not generator or not generator.same_model(args):
+            # hopefully purge memory used by previous model
+            del generator
+            generator = clipart.Generator(args)
+        if args.profile:
+            with cProfile.Profile() as profiler:
+                loss = generator.generate(args)
+            profiler.dump_stats(f"profiling/{clipart.version}.stats")
+            print("generated with stats")
+        else:
+            loss = generator.generate(args)
+            print("generated")
+            if video:
+                mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
-    return Result(
+    return generator, Result(
         elapsed=round(time.time() - start_time),
         filepath=feedforward_path or f"{path}/{fname}",
         loss=round(loss, 4),
