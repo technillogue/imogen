@@ -125,7 +125,7 @@ def main() -> None:
     backoff = 60.0
     generator = None
     # catch some database connection errors
-    with psycopg.connect(utils.get_secret("DATABASE_URL")) as conn:
+    with psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True) as conn:
         while 1:
             # try to claim
             prompt = get_prompt(conn)
