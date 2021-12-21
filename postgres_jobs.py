@@ -48,7 +48,6 @@ try:
     url = sys.argv[1]
 except IndexError:
     url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
-    # "redis://:Ing2ODJrcXA2bXZqOWQ1NDMia953abbc82e1f4b9c47158d739526833d1006263@imogen.redis.fly.io:10079"
 password, rest = url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=int(port), password=password)
@@ -136,6 +135,7 @@ def main() -> None:
             try:
                 generator, result = handle_item(generator, prompt)
                 # success
+                start_post = time.time()
                 fmt = """UPDATE prompt_queue SET status='uploading', loss=%s, elapsed_gpu=%s, filepath=%s WHERE id=%s;"""
                 params = [
                     result.loss,
@@ -151,6 +151,7 @@ def main() -> None:
                     [prompt.prompt_id],
                 )
                 logging.info("set done")
+                logging.info("poasting time: %s", time.time() - start_post)
                 backoff = 60
             except Exception as e:  # pylint: disable=broad-except
                 error_message = traceback.format_exc()
@@ -194,18 +195,13 @@ def handle_item(generator: Optional[clipart.Generator], prompt: Prompt) -> Resul
         maybe_prompt_list = [p.strip() for p in prompt.prompt.split("//")]
         video = len(maybe_prompt_list) > 1
         if video:
-            args = clipart.base_args.with_update(
-                {"prompts": maybe_prompt_list, "max_iterations": 1000}
-            )
+            update = {"prompts": maybe_prompt_list, "max_iterations": 1000}
         else:
-            args = clipart.base_args.with_update(
-                {"text": prompt.prompt, "max_iterations": 221}
-            )
-    if prompt.param_dict.get("init_image"):
+            update = {"text": prompt.prompt, "max_iterations": 221}
+        args = clipart.base_args.with_update(update)
+    if init_image := prompt.param_dict.get("init_image"):
         # download the image from redis
-        open(prompt.param_dict["init_image"], "wb").write(
-            r[prompt.param_dict["init_image"]]
-        )
+        open(init_image, "wb").write(r[init_image])
     prompt.param_dict["video"] = video
     args = args.with_update(prompt.param_dict)
     print(args)
