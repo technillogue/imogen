@@ -63,10 +63,12 @@ def admin(msg: str) -> None:
 
 
 def stop() -> None:
-    logging.info("stopping")
+    logging.debug("stopping")
     if os.getenv("POWEROFF"):
         admin("powering down worker")
         subprocess.run(["sudo", "poweroff"])
+    elif os.getenv("EXIT"):
+        sys.exit(0)
     else:
         time.sleep(15)
 
@@ -250,7 +252,7 @@ def post(result: Result, prompt: Prompt) -> None:
     if result.loss:
         message += f"{result.loss} loss,"
     message += f" v{clipart.version}."
-    requests.post(
+    resp = requests.post(
         f"{prompt.url or admin_signal_url}/attachment",
         params={"message": message, "id": str(prompt.prompt_id)},
         files={"image": f},
