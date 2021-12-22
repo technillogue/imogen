@@ -262,6 +262,7 @@ def post(result: Result, prompt: Prompt) -> None:
 
 
 def post_tweet(result: Result, prompt: Prompt) -> None:
+    logging.info("uploading to twitter")
     if not result.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
             "media/upload", None, {"media": open(result.filepath, mode="rb").read()}
@@ -307,6 +308,7 @@ def post_tweet(result: Result, prompt: Prompt) -> None:
             logging.error(media_resp.text)
             admin(media_resp.text)
         except:  # pylint: disable=bare-except
+            logging.error("couldn't send to admin")
             pass
 
 
