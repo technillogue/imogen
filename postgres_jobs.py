@@ -5,7 +5,7 @@ import dataclasses
 import json
 import logging
 import os
-import sockets
+import socket
 import subprocess
 import sys
 import time
@@ -122,6 +122,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 def main() -> None:
     admin(f"starting postgres_jobs on {hostname}")
+    logging.info(f"starting postgres_jobs on {hostname}")
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
     # try to claim it. if we can't, someone else took it, and we should try again
