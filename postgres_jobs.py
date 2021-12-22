@@ -5,6 +5,7 @@ import dataclasses
 import json
 import logging
 import os
+import sockets
 import subprocess
 import sys
 import time
@@ -22,6 +23,7 @@ import feedforward
 import mk_video
 import utils
 
+hostname = socket.gethostname()
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
     "qxmCL5ebziSwOIlf3MByuhRvY",
@@ -42,7 +44,7 @@ tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
 os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
-admin_signal_url = "https://imogen.fly.dev"
+admin_signal_url = "https://imogen-renaissance.fly.dev"
 
 try:
     url = sys.argv[1]
@@ -109,15 +111,15 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     cursor = conn.cursor(row_factory=class_row(Prompt))
     logging.info("getting")
     maybe_prompt = cursor.execute(
-        "UPDATE prompt_queue SET status='assigned', assigned_at=now() WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
-        [prompt_id],
+        "UPDATE prompt_queue SET status='assigned', assigned_at=now(), hostname=%s WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
+        [hostname, prompt_id],
     ).fetchone()
     logging.info("set assigned")
     return maybe_prompt
 
 
 def main() -> None:
-    admin("starting postgres_jobs")
+    admin(f"starting postgres_jobs on {hostname}")
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
     # try to claim it. if we can't, someone else took it, and we should try again
