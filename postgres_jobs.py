@@ -135,7 +135,7 @@ def main() -> None:
             if not prompt:
                 stop()
                 continue
-            print(prompt)
+            print("got prompt: ", prompt)
             try:
                 generator, result = handle_item(generator, prompt)
                 # success
@@ -147,7 +147,7 @@ def main() -> None:
                     result.filepath,
                     prompt.prompt_id,
                 ]
-                logging.info("set uploading")
+                logging.info("set uploading ", prompt)
                 conn.execute(fmt, params)
                 post(result, prompt)
                 conn.execute(
