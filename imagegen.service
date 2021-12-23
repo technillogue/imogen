@@ -1,9 +1,9 @@
 [Unit]
-Description=read redis 
+Description=imagegen postgres 
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3.9 /home/sylv/imogen/read_redis.py 
+ExecStart=/usr/bin/python3.9 /home/sylv/imogen/postgres_jobs.py 
 WorkingDirectory=/home/sylv/imogen
 User=sylv 
 Restart=always

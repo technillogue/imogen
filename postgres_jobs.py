@@ -5,7 +5,7 @@ import dataclasses
 import json
 import logging
 import os
-import sockets
+import socket
 import subprocess
 import sys
 import time
@@ -63,10 +63,12 @@ def admin(msg: str) -> None:
 
 
 def stop() -> None:
-    logging.info("stopping")
+    logging.debug("stopping")
     if os.getenv("POWEROFF"):
         admin("powering down worker")
         subprocess.run(["sudo", "poweroff"])
+    elif os.getenv("EXIT"):
+        sys.exit(0)
     else:
         time.sleep(15)
 
@@ -120,6 +122,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 def main() -> None:
     admin(f"starting postgres_jobs on {hostname}")
+    logging.info(f"starting postgres_jobs on {hostname}")
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
     # try to claim it. if we can't, someone else took it, and we should try again
@@ -250,7 +253,7 @@ def post(result: Result, prompt: Prompt) -> None:
     if result.loss:
         message += f"{result.loss} loss,"
     message += f" v{clipart.version}."
-    requests.post(
+    resp = requests.post(
         f"{prompt.url or admin_signal_url}/attachment",
         params={"message": message, "id": str(prompt.prompt_id)},
         files={"image": f},
@@ -259,6 +262,7 @@ def post(result: Result, prompt: Prompt) -> None:
 
 
 def post_tweet(result: Result, prompt: Prompt) -> None:
+    logging.info("uploading to twitter")
     if not result.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
             "media/upload", None, {"media": open(result.filepath, mode="rb").read()}
@@ -304,6 +308,7 @@ def post_tweet(result: Result, prompt: Prompt) -> None:
             logging.error(media_resp.text)
             admin(media_resp.text)
         except:  # pylint: disable=bare-except
+            logging.error("couldn't send to admin")
             pass
 
 
