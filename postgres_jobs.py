@@ -222,7 +222,8 @@ def handle_item(generator: Optional[clipart.Generator], prompt: Prompt) -> Resul
         loss = feedforward.generate(prompt.prompt)
     elif prompt.param_dict.get("feedforward_fast"):
         feedforward_path = f"results/single/{prompt.slug}.png"
-        loss = feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
+        feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
+        loss = -1
     else:
         if not generator or not generator.same_model(args):
             # hopefully purge memory used by previous model
