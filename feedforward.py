@@ -78,8 +78,8 @@ CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
 CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
 
 def mk_slug(text: Union[str, list[str]]) -> str:
-    text = "".join(text)
-    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
+    text = "".join(text).encode("ascii", errors='ignore').decode()
+    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200] + hex(hash(text))[:4]
 
 def load_vqgan_model(config_path, checkpoint_path):
     config = OmegaConf.load(config_path)

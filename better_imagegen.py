@@ -35,8 +35,8 @@ logger.addHandler(console_handler)
 
 
 def mk_slug(text: Union[str, list[str]]) -> str:
-    text = "".join(text)
-    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
+    text = "".join(text).encode("ascii", errors='ignore').decode()
+    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200] + hex(hash(text))[:4]
 
 
 class ReplaceGrad(torch.autograd.Function):

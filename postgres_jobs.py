@@ -122,7 +122,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 def main() -> None:
     admin(f"starting postgres_jobs on {hostname}")
-    logging.info(f"starting postgres_jobs on {hostname}")
+    logging.info("starting postgres_jobs on %s", hostname)
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
     # try to claim it. if we can't, someone else took it, and we should try again
@@ -150,7 +150,7 @@ def main() -> None:
                     result.filepath,
                     prompt.prompt_id,
                 ]
-                logging.info("set uploading ", prompt)
+                logging.info("set uploading %s", prompt)
                 conn.execute(fmt, params)
                 post(result, prompt)
                 conn.execute(
@@ -170,10 +170,15 @@ def main() -> None:
                 admin(error_message)
                 if "out of memory" in str(e):
                     sys.exit(137)
+                conn.execute(
+                    "UPDATE prompt_queue SET errors=errors+1 WHERE id=%s",
+                    [prompt.prompt_id],
+                )
                 time.sleep(backoff)
                 backoff *= 1.5
     finally:
         conn.close()
+
 
 # parse raw parameters
 # parse prompt list
@@ -189,9 +194,10 @@ def main() -> None:
 # upload the file, id, and message to imogen based on the url. ideally retry on non-200
 # (imogen looks up destination, author, timestamp to send).
 # upload to twitter. if it fails, maybe log video size
+Gen = Optional[clipart.Generator]
 
 
-def handle_item(generator: Optional[clipart.Generator], prompt: Prompt) -> Result:
+def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     video = False
     try:
         settings = json.loads(prompt.prompt)
@@ -259,6 +265,7 @@ def post(result: Result, prompt: Prompt) -> None:
         params={"message": message, "id": str(prompt.prompt_id)},
         files={"image": f},
     )
+    logging.info(resp)
     post_tweet(result, prompt)
 
 
@@ -310,7 +317,6 @@ def post_tweet(result: Result, prompt: Prompt) -> None:
             admin(media_resp.text)
         except:  # pylint: disable=bare-except
             logging.error("couldn't send to admin")
-            pass
 
 
 if __name__ == "__main__":
