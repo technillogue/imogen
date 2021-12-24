@@ -132,7 +132,6 @@ def main() -> None:
     # catch some database connection errors
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     try:
-        retry_uploads(conn)
         while 1:
             # try to claim
             prompt = get_prompt(conn)
@@ -270,28 +269,32 @@ def post(result: Result, prompt: Prompt) -> None:
     post_tweet(result, prompt)
 
 
-def retry_uploads(conn: psycopg.Connection) -> None:
+def retry_uploads() -> None:
+    conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     q = conn.execute(
         "select id, url, filepath from prompt_queue where status='uploading' and hostname=%s",
         [hostname],
     )
-    for prompt_id, url, filepath in q:
-        try:
-            f = open(filepath, mode="rb")
-        except FileNotFoundError:
-            continue
-        try:
-            _url = f"{url or admin_signal_url}/attachment"
-            resp = requests.post(
-                _url, params={"id": str(prompt_id)}, files={"image": f}
-            )
-            logging.info(resp)
-            if resp.status_code == 200:
-                conn.execute(
-                    "update prompt_queue set status='done' where id=%s", [prompt_id]
+    try:
+        for prompt_id, url, filepath in q:
+            try:
+                f = open(filepath, mode="rb")
+            except FileNotFoundError:
+                continue
+            try:
+                _url = f"{url or admin_signal_url}/attachment"
+                resp = requests.post(
+                    _url, params={"id": str(prompt_id)}, files={"image": f}
                 )
-        except:  # pylint: disable=broad-except
-            continue
+                logging.info(resp)
+                if resp.status_code == 200:
+                    conn.execute(
+                        "update prompt_queue set status='done' where id=%s", [prompt_id]
+                    )
+            except:  # pylint: disable=broad-except
+                continue
+    finally:
+        conn.close()
 
 
 def post_tweet(result: Result, prompt: Prompt) -> None:
