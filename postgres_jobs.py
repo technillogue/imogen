@@ -47,10 +47,10 @@ os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 admin_signal_url = "https://imogen-renaissance.fly.dev"
 
 try:
-    url = sys.argv[1]
+    redis_url = sys.argv[1]
 except IndexError:
-    url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
-password, rest = url.removeprefix("redis://:").split("@")
+    redis_url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
+password, rest = redis_url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=int(port), password=password)
 
@@ -132,6 +132,7 @@ def main() -> None:
     # catch some database connection errors
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     try:
+        retry_uploads(conn)
         while 1:
             # try to claim
             prompt = get_prompt(conn)
@@ -267,6 +268,30 @@ def post(result: Result, prompt: Prompt) -> None:
     )
     logging.info(resp)
     post_tweet(result, prompt)
+
+
+def retry_uploads(conn: psycopg.Connection) -> None:
+    q = conn.execute(
+        "select id, url, filepath from prompt_queue where status='uploading' and hostname=%s",
+        [hostname],
+    )
+    for prompt_id, url, filepath in q:
+        try:
+            f = open(filepath, mode="rb")
+        except FileNotFoundError:
+            continue
+        try:
+            _url = f"{url or admin_signal_url}/attachment"
+            resp = requests.post(
+                _url, params={"id": str(prompt_id)}, files={"image": f}
+            )
+            logging.info(resp)
+            if resp.status_code == 200:
+                conn.execute(
+                    "update prompt_queue set status='done' where id=%s", [prompt_id]
+                )
+        except:  # pylint: disable=broad-except
+            continue
 
 
 def post_tweet(result: Result, prompt: Prompt) -> None:
