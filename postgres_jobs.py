@@ -269,11 +269,12 @@ def post(result: Result, prompt: Prompt) -> None:
     post_tweet(result, prompt)
 
 
-def retry_uploads() -> None:
+def retry_uploads(limit: int = 10, recent: bool = False) -> None:
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     q = conn.execute(
-        "select id, url, filepath from prompt_queue where status='uploading' and hostname=%s",
-        [hostname],
+        "select id, url, filepath from prompt_queue where status='uploading' and hostname=%s "
+        f"order by id {'desc' if recent else 'asc'} limit %s",
+        [hostname, limit],
     )
     try:
         for prompt_id, url, filepath in q:
@@ -291,7 +292,7 @@ def retry_uploads() -> None:
                     conn.execute(
                         "update prompt_queue set status='done' where id=%s", [prompt_id]
                     )
-            except:  # pylint: disable=broad-except
+            except:  # pylint: disable=bare-except
                 continue
     finally:
         conn.close()
