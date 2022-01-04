@@ -267,6 +267,18 @@ def post(result: Result, prompt: Prompt) -> None:
     )
     logging.info(resp)
     post_tweet(result, prompt)
+    bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
+    requests.post(
+        f"https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/imoges/{prompt.slug}.png",
+        headers={"Authorization": bearer},
+        data=open(result.filepath, mode="rb").read(),
+    )
+    os.remove(result.filepath)
+    # can be retrieved with
+    # slug = prompt_queue.filepath.split("/")[1] # bc slug= the directory in filepath
+    # requests.get(
+    # f"https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/{prompt.slug}.png"
+    # )
 
 
 def retry_uploads(limit: int = 10, recent: bool = False) -> None:
