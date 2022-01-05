@@ -7,6 +7,15 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 
+def ffmpeg(iterations: int, slug: str) -> Popen:
+    desired_fps = iterations / 15
+    fps = 30 if 30 < desired_fps else desired_fps if desired_fps < 10 else 10
+    ffmpeg_cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps}  \
+        -pix_fmt yuv420p -crf 17 -preset veryslow output/{slug}/video.mp4"
+    ffmpeg_proc = Popen(cmd.split(), stdin=-1)
+    assert ffmpeg_proc.stdin
+    return ffmpeg_proc
+
 
 def video(root: str = "") -> None:
     min_fps = 10

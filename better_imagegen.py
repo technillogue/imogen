@@ -255,21 +255,11 @@ class Generator:
         ]
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
-        iterations = (
-            (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
-            if is_crossfade
-            else args.max_iterations
-        )
         if is_crossfade:
-            desired_fps = iterations / 15
-            fps = max(min(desired_fps, 30), 10)
-            ffmpeg_cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps}  \
-                -pix_fmt yuv420p -crf 17 -preset veryslow output/{slug}/video.mp4"
-            ffmpeg_proc = Popen(cmd.split(), stdin=-1)
-            assert ffmpeg_proc.stdin
-            output_buffer = ffmpeg_proc.stdin
+            iterations = (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
+            ffmpeg_proc: Optional[Popen] = mk_video.ffmpeg(iterations, slug)
         else:
-            output_buffer = None
+            ffmpeg_proc = None
 
         # uses prompt_queue :(
         @torch.no_grad()
