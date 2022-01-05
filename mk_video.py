@@ -6,6 +6,8 @@ from tqdm.notebook import tqdm
 import numpy as np
 from pathlib import Path
 from PIL import Image
+
+
 def video(root: str = "") -> None:
     min_fps = 10
     max_fps = 30

@@ -35,8 +35,11 @@ logger.addHandler(console_handler)
 
 
 def mk_slug(text: Union[str, list[str]]) -> str:
-    text = "".join(text).encode("ascii", errors='ignore').decode()
-    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200] + hex(hash(text))[-4:]
+    text = "".join(text).encode("ascii", errors="ignore").decode()
+    return (
+        "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200]
+        + hex(hash(text))[-4:]
+    )
 
 
 class ReplaceGrad(torch.autograd.Function):
@@ -203,6 +206,7 @@ class Generator:
         return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
 
     def generate(self, args: "BetterNamespace") -> float:
+        # setup based on image and model size
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         cut_size = self.perceptor.visual.input_resolution
         embedding_dimension = self.model.quantize.e_dim
@@ -245,25 +249,27 @@ class Generator:
         except FileExistsError:
             pass
 
-        # this uses global z
-        @torch.no_grad()
-        def checkin(i: int, losses: "list[Tensor]") -> None:
-            losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
-            tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
-            out = self.synth(z)
-            TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/progress.png")
-
         prompts = [
             Prompt(self.embed(text), weight=weight, tag=text).to(device)
             for text, weight in zip(args.prompts, (1.0, 0.0))
         ]
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
-        # iterations = (
-        #     (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
-        #     if is_crossfade
-        #     else args.max_iterations
-        # )
+        iterations = (
+            (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
+            if is_crossfade
+            else args.max_iterations
+        )
+        if is_crossfade:
+            desired_fps = iterations / 15
+            fps = max(min(desired_fps, 30), 10)
+            ffmpeg_cmd = f"ffmpeg -y -f image2pipe -vcodec png -r {fps} -i - -vcodec libx264 -r {fps}  \
+                -pix_fmt yuv420p -crf 17 -preset veryslow output/{slug}/video.mp4"
+            ffmpeg_proc = Popen(cmd.split(), stdin=-1)
+            assert ffmpeg_proc.stdin
+            output_buffer = ffmpeg_proc.stdin
+        else:
+            output_buffer = None
 
         # uses prompt_queue :(
         @torch.no_grad()
@@ -323,17 +329,22 @@ class Generator:
 
             for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
                 result.append(prompt(iii))
-
                 # maybe we want to put this in a separate calculate_loss function
                 # that handles checking if we're fading?
             if args.video:
                 with torch.no_grad():
-                    TF.to_pil_image(out[0].cpu()).save(
-                        f"output/{slug}/steps/{i:04}.png"
-                    )
+                    TF.to_pil_image(out[0].cpu()).save(ffmpeg_proc.stdin)
             if not result:
                 raise IndexError
             return result
+
+        # this uses global z
+        @torch.no_grad()
+        def checkin(i: int, losses: "list[Tensor]") -> None:
+            losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
+            tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
+            out = self.synth(z)
+            TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/progress.png")
 
         def train(i: int) -> float:
             opt.zero_grad()
@@ -361,6 +372,8 @@ class Generator:
                 # pbar.update(1)
         except KeyboardInterrupt:
             pass
+        if is_crossfade:
+            ffmpeg_proc.wait()
         return float(loss)
         # steps_without_checkin = 0
         # with tqdm() as pbar:
@@ -409,7 +422,7 @@ base_args = BetterNamespace(
         # "faerie rave",
         # "a completely normal forest with no supernatural entities in sight",
     ],
-    #text: override prompt
+    # text: override prompt
     image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],
