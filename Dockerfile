@@ -16,8 +16,8 @@ RUN mkdir -p /app/steps
 RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST" > /etc/timezone
 RUN apt update
 RUN DEBIAN_FRONTEND="noninteractive" apt install -y python3 python3-pip ffmpeg git 
-COPY ./install_cuda.sh .
-RUN install_cuda.sh
+# COPY ./install_cuda.sh .
+# RUN install_cuda.sh
 COPY ./download_modals.sh .
 RUN ./download_modals.sh
 COPY --from=libbuilder /app/venv/lib/python3/site-packages /app/taming-transformers /app/CLIP /app/
