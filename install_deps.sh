@@ -19,6 +19,7 @@ python3.9 -m pip install torchvision
 python3.9 -m pip install imageio
 
 python3.9 -m pip install redis requests TwitterAPI
+python3.9 -m pip install psycopg[pool, binary]
 # if imagenet_1024:
 #   !curl -L -o vqgan_imagenet_f16_1024.yaml -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.yaml' #ImageNet 1024
 #   !curl -L -o vqgan_imagenet_f16_1024.ckpt -C - 'http://mirror.io.community/blob/vqgan/vqgan_imagenet_f16_1024.ckpt'  #ImageNet 1024
