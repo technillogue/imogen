@@ -4,18 +4,22 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+inops = "*"
 ftfy = "*"
-regex = "*"
-tqdm = "*"
-omegaconf = "*"
-pytorch-lightning = "*"
-einops = "*"
-transformers = "*"
-numpy = "*"
-torchvision = "*"
-streamlit = "*"
-kornia = "*"
 imageio = "*"
+imageio-ffmpeg = "*"
+kornia = "*"
+omegaconf = "*"
+psycopg[pool,binary] = "*"
+pytorch-lightning = "*"
+redis = "*"
+regex = "*"
+requests = "*"
+torch = "*"
+torchvision = "*"
+tqdm = "*"
+TwitterAPI = "*"
+
 [dev-packages]
 
 [requires]
@@ -23,6 +27,3 @@ python_version = "3.9"
 
 [pipenv]
 allow_prereleases = true
-
-[packages.33cf049]
-path = "./taming-transformers"

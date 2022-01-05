@@ -17,9 +17,8 @@ import redis
 import requests
 import TwitterAPI as t
 from psycopg.rows import class_row
-
 import better_imagegen as clipart
-import feedforward
+#import feedforward
 import mk_video
 import utils
 
@@ -50,6 +49,7 @@ try:
     redis_url = sys.argv[1]
 except IndexError:
     redis_url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
+
 password, rest = redis_url.removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=int(port), password=password)
@@ -223,14 +223,14 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     path = f"output/{clipart.mk_slug(args.prompts)}"
     feedforward_path = ""
     start_time = time.time()
-    if prompt.param_dict.get("feedforward"):
-        feedforward_path = f"results/single/{prompt.slug}/progress.png"
-        loss = feedforward.generate(prompt.prompt)
-    elif prompt.param_dict.get("feedforward_fast"):
-        feedforward_path = f"results/single/{prompt.slug}.png"
-        feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
-        loss = -1
-    else:
+    # if prompt.param_dict.get("feedforward"):
+    #     feedforward_path = f"results/single/{prompt.slug}/progress.png"
+    #     loss = feedforward.generate(prompt.prompt)
+    # elif prompt.param_dict.get("feedforward_fast"):
+    #     feedforward_path = f"results/single/{prompt.slug}.png"
+    #     feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
+    #     loss = -1
+    if 1:
         if not generator or not generator.same_model(args):
             # hopefully purge memory used by previous model
             del generator
