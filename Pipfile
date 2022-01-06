@@ -4,13 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-inops = "*"
+einops = "*"
 ftfy = "*"
 imageio = "*"
 imageio-ffmpeg = "*"
 kornia = "*"
 omegaconf = "*"
-psycopg[pool,binary] = "*"
 pytorch-lightning = "*"
 redis = "*"
 regex = "*"
@@ -27,3 +26,6 @@ python_version = "3.9"
 
 [pipenv]
 allow_prereleases = true
+
+[packages.psycopg]
+extras = [ "pool", "binary"]

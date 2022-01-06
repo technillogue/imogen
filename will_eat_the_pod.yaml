@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: imagegen-pod-2
+  namespace: tenant-mobilecoin-imogen
+  labels:
+    name: imogegen-pod-2
+    app: forest-bot
+spec:
+  containers:
+  - name: imogegen
+    image: technillogue/imogen
+    resources:
+      limits:
+        cpu: 3
+        memory: 8Gi
+        nvidia.com/gpu: 1
+    env:
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: dev-secrets
+            key: DATABASE_URL
+      - name: SUPABASE_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: dev-secrets
+            key: SUPABASE_API_KEY
+  restartPolicy: Never
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: gpu.nvidia.com/class
+            operator: In
+            values:
+              - Tesla_V100_PCIE
