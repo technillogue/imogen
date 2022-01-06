@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import traceback
+from pathlib import Path
 from typing import Optional
 
 import psycopg
@@ -17,8 +18,10 @@ import redis
 import requests
 import TwitterAPI as t
 from psycopg.rows import class_row
+
 import better_imagegen as clipart
-#import feedforward
+
+# import feedforward
 import mk_video
 import utils
 
@@ -121,6 +124,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 
 def main() -> None:
+    Path("./input").mkdir(exist_ok=True)
     admin(f"starting postgres_jobs on {hostname}")
     logging.info("starting postgres_jobs on %s", hostname)
     # clear failed instances
@@ -138,7 +142,7 @@ def main() -> None:
             if not prompt:
                 stop()
                 continue
-            print("got prompt: ", prompt)
+            logging.info("got prompt: ", prompt)
             try:
                 generator, result = handle_item(generator, prompt)
                 # success
@@ -157,16 +161,27 @@ def main() -> None:
                     "UPDATE prompt_queue SET status='done' WHERE id=%s",
                     [prompt.prompt_id],
                 )
-                logging.info("set done")
-                logging.info("poasting time: %s", time.time() - start_post)
+                logging.info("set done, poasting time: %s", time.time() - start_post)
                 backoff = 60
+                workers = conn.execute(
+                    "select count(distinct hostname) + 1 from prompt_queue where status='assigned'"
+                ).fetchone()[0]
+                queue_size = conn.execute(
+                    "SELECT count(id) AS len FROM prompt_queue WHERE status='pending' OR status='assigned';"
+                ).fetchone()[0]
+                if queue_size == 0:
+                    sys.exit(0)
+                if workers == 1:
+                    continue  # nobody else has taken assignments, we just finished ours
+                if queue_size / workers < 5 or workers > 6:
+                    sys.quit(0)
             except Exception as e:  # pylint: disable=broad-except
                 logging.info("caught exception")
                 error_message = traceback.format_exc()
                 if prompt:
-                    print(prompt)
+                    logging.info(prompt)
                     admin(repr(prompt))
-                print(error_message)
+                logging.error(error_message)
                 admin(error_message)
                 if "out of memory" in str(e):
                     sys.exit(137)
@@ -219,7 +234,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
         open(init_image, "wb").write(r[init_image])
     prompt.param_dict["video"] = video
     args = args.with_update(prompt.param_dict)
-    print(args)
+    logging.info(args)
     path = f"output/{clipart.mk_slug(args.prompts)}"
     feedforward_path = ""
     start_time = time.time()
@@ -239,10 +254,10 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
             with cProfile.Profile() as profiler:
                 loss = generator.generate(args)
             profiler.dump_stats(f"profiling/{clipart.version}.stats")
-            print("generated with stats")
+            logging.info("generated with stats")
         else:
             loss = generator.generate(args)
-            print("generated")
+            logging.info("generated")
             if video:
                 mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"

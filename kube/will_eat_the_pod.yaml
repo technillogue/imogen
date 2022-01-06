@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: imagegen-pod-2
+  name: imagegen-pod-3
   namespace: tenant-mobilecoin-imogen
   labels:
-    name: imogegen-pod-2
+    name: imagegen-pod-3
     app: forest-bot
 spec:
   containers:
@@ -13,7 +13,7 @@ spec:
     resources:
       limits:
         cpu: 3
-        memory: 8Gi
+        memory: 6Gi
         nvidia.com/gpu: 1
     env:
       - name: DATABASE_URL
@@ -35,4 +35,4 @@ spec:
           - key: gpu.nvidia.com/class
             operator: In
             values:
-              - Tesla_V100_PCIE
+              - Tesla_V100_NVLINK
