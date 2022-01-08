@@ -1,10 +1,12 @@
 #!/usr/bin/python3.9
 # import warnings
 # warnings.simplefilter("ignore")
+import logging
 import pdb
 import sys
-from typing import Any, Union
 from pathlib import Path
+from typing import Any, Iterable, Union
+
 import kornia.augmentation as K
 import torch
 from omegaconf import OmegaConf
@@ -14,7 +16,6 @@ from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
-import logging
 
 from CLIP import clip
 from utils import resample  # , resize_image
@@ -35,8 +36,11 @@ logger.addHandler(console_handler)
 
 
 def mk_slug(text: Union[str, list[str]]) -> str:
-    text = "".join(text).encode("ascii", errors='ignore').decode()
-    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200] + hex(hash(text))[-4:]
+    text = "".join(text).encode("ascii", errors="ignore").decode()
+    return (
+        "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200]
+        + hex(hash(text))[-4:]
+    )
 
 
 class ReplaceGrad(torch.autograd.Function):
@@ -192,8 +196,17 @@ class Generator:
         )
 
     def embed(self, text: str) -> Tensor:
+        def no_url() -> Iterable[str]:
+            for word in text.split(" "):
+                scheme = word.startswith("http")
+                twt = "twitter.com" in word
+                if twt or scheme and "://" in word:
+                    continue
+                yield word
+
+        cleantext = " ".join(no_url())
         return self.perceptor.encode_text(
-            clip.tokenize(text, truncate=True).to(self.device)
+            clip.tokenize(cleantext, truncate=True).to(self.device)
         ).float()
 
     def synth(self, z: Tensor) -> Tensor:
@@ -409,7 +422,7 @@ base_args = BetterNamespace(
         # "faerie rave",
         # "a completely normal forest with no supernatural entities in sight",
     ],
-    #text: override prompt
+    # text: override prompt
     image_prompts=[],
     noise_prompt_seeds=[],
     noise_prompt_weights=[],

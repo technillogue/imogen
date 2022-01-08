@@ -48,12 +48,7 @@ os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
 admin_signal_url = "https://imogen-renaissance.fly.dev"
 
-try:
-    redis_url = sys.argv[1]
-except IndexError:
-    redis_url = "redis://:speak-friend-and-enter@forest-redis.fly.dev:10000"
-
-password, rest = redis_url.removeprefix("redis://:").split("@")
+password, rest = utils.get_secret("REDIS_URL").removeprefix("redis://:").split("@")
 host, port = rest.split(":")
 r = redis.Redis(host=host, port=int(port), password=password)
 
@@ -68,12 +63,42 @@ def admin(msg: str) -> None:
 def stop() -> None:
     logging.debug("stopping")
     if os.getenv("POWEROFF"):
-        admin("powering down worker")
+        admin(f"couldn't get item, powering down worker {hostname}")
         subprocess.run(["sudo", "poweroff"])
     elif os.getenv("EXIT"):
+        admin(f"couldn't get item, exiting worker {hostname}")
         sys.exit(0)
     else:
         time.sleep(15)
+
+
+def scale_in(conn: psycopg.Connection) -> None:
+    if not os.getenv("EXIT_ON_LOAD"):
+        return
+    workers = conn.execute(
+        "select count(distinct hostname) + 1 from prompt_queue where status='assigned'"
+    ).fetchone()[0]
+    queue_empty = conn.execute(
+        "SELECT count(id)=0 FROM prompt_queue WHERE status='pending'"
+    ).fetchone()[0]
+    paid_queue_size = conn.execute(
+        "SELECT count(id) AS len FROM prompt_queue WHERE status='pending' OR status='assigned' AND paid=TRUE;"
+    ).fetchone()[0]
+    if queue_empty:
+        admin(f"queue empty, exiting from {hostname}")
+        sys.exit(0)
+    if workers == 1:
+        # nobody else has taken assignments, we just finished ours
+        return
+    if paid_queue_size / workers < 5 or workers > 6:
+        # target metric: latency under 10 min for paid images
+        # images take ~2min
+        # if there's less than five items per worker, we aren't needed
+        # even if there's 25 items, we still don't want more than five workers
+        admin(
+            f"paid queue size: {paid_queue_size}. workers: {workers}. load: {paid_queue_size / workers}. exiting {hostname}"
+        )
+        sys.exit(0)
 
 
 @dataclasses.dataclass
@@ -106,7 +131,10 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
         """UPDATE prompt_queue SET status='pending', assigned_at=null
         WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
     )  # maybe this is a trigger
-    paid = ""  # "AND paid=TRUE" # should be used by every instance except the first
+
+    paid = (
+        "" if os.getenv("FREE") else "AND paid=TRUE"
+    )  # should be used by every instance except the first
     maybe_id = conn.execute(
         f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY signal_ts ASC LIMIT 1;"
     ).fetchone()
@@ -142,7 +170,7 @@ def main() -> None:
             if not prompt:
                 stop()
                 continue
-            logging.info("got prompt: ", prompt)
+            logging.info("got prompt: %s", prompt)
             try:
                 generator, result = handle_item(generator, prompt)
                 # success
@@ -163,18 +191,7 @@ def main() -> None:
                 )
                 logging.info("set done, poasting time: %s", time.time() - start_post)
                 backoff = 60
-                workers = conn.execute(
-                    "select count(distinct hostname) + 1 from prompt_queue where status='assigned'"
-                ).fetchone()[0]
-                queue_size = conn.execute(
-                    "SELECT count(id) AS len FROM prompt_queue WHERE status='pending' OR status='assigned';"
-                ).fetchone()[0]
-                if queue_size == 0:
-                    sys.exit(0)
-                if workers == 1:
-                    continue  # nobody else has taken assignments, we just finished ours
-                if queue_size / workers < 5 or workers > 6:
-                    sys.quit(0)
+
             except Exception as e:  # pylint: disable=broad-except
                 logging.info("caught exception")
                 error_message = traceback.format_exc()
@@ -245,7 +262,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     #     feedforward_path = f"results/single/{prompt.slug}.png"
     #     feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
     #     loss = -1
-    if 1:
+    if 1: # else: # pylint: disable=using-constant-test
         if not generator or not generator.same_model(args):
             # hopefully purge memory used by previous model
             del generator
