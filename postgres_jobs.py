@@ -54,19 +54,21 @@ r = redis.Redis(host=host, port=int(port), password=password)
 
 
 def admin(msg: str) -> None:
+    logging.info(msg)
     requests.post(
         f"{admin_signal_url}/admin",
         params={"message": str(msg)},
     )
 
+paid = "" if os.getenv("FREE") else "paid "
 
 def stop() -> None:
     logging.debug("stopping")
     if os.getenv("POWEROFF"):
-        admin(f"couldn't get item, powering down worker {hostname}")
+        admin(f"no {paid}prompts to generate, powering down worker {hostname}")
         subprocess.run(["sudo", "poweroff"])
     elif os.getenv("EXIT"):
-        admin(f"couldn't get item, exiting worker {hostname}")
+        admin(f"no {paid}prompts to generate, exiting worker {hostname}")
         sys.exit(0)
     else:
         time.sleep(15)
@@ -196,7 +198,6 @@ def main() -> None:
                 logging.info("caught exception")
                 error_message = traceback.format_exc()
                 if prompt:
-                    logging.info(prompt)
                     admin(repr(prompt))
                 logging.error(error_message)
                 admin(error_message)
