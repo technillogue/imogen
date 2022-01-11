@@ -114,7 +114,7 @@ class Prompt:
 
     def __post_init__(self) -> None:
         try:
-            self.param_dict = json.loads(self.params)
+            self.param_dict = json.loads(self.params or "{}")
             assert isinstance(self.param_dict, dict)
         except (json.JSONDecodeError, AssertionError):
             self.param_dict = {}
