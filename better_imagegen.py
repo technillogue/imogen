@@ -302,8 +302,7 @@ class Generator:
             else:
                 prompts.pop(0)
                 # ???
-                # prompt = r.lpop("twitch_queue")
-                # ???
+                # prompt = r.lpop("twitch_queue") # ???
                 if prompt_queue:
                     next_text = prompt_queue.pop(0)
                     print("next text: ", next_text)
@@ -330,7 +329,9 @@ class Generator:
             iii = self.perceptor.encode_image(normalize(cutouts)).float()
 
             result = []
-
+            # for cutout in cutouts:
+            #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
+            #     TF.to_pil_image(cutout).save(f"{loss}.png")
             if args.init_weight:
                 result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 

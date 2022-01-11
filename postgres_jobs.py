@@ -87,7 +87,7 @@ def scale_in(conn: psycopg.Connection) -> None:
         "SELECT count(id) AS len FROM prompt_queue WHERE status='pending' OR status='assigned' AND paid=TRUE;"
     ).fetchone()[0]
     if queue_empty:
-        admin(f"queue empty, exiting from {hostname}")
+        admin(f"\N{Octagonal Sign} {hostname}")
         sys.exit(0)
     if workers == 1:
         # nobody else has taken assignments, we just finished ours
