@@ -60,15 +60,21 @@ def admin(msg: str) -> None:
         params={"message": str(msg)},
     )
 
+
 paid = "" if os.getenv("FREE") else "paid "
+
 
 def stop() -> None:
     logging.debug("stopping")
     if os.getenv("POWEROFF"):
-        admin(f"no {paid}prompts to generate, powering down worker {hostname}")
+        admin(
+            f"\N{cross mark}{paid}\N{frame with picture}\N{construction worker}\N{high voltage sign}\N{downwards black arrow} {hostname}"
+        )
         subprocess.run(["sudo", "poweroff"])
     elif os.getenv("EXIT"):
-        admin(f"no {paid}prompts to generate, exiting worker {hostname}")
+        admin(
+            f"\N{cross mark}{paid}\N{frame with picture}\N{construction worker}\N{sleeping symbol} {hostname}"
+        )
         sys.exit(0)
     else:
         time.sleep(15)
@@ -87,7 +93,7 @@ def scale_in(conn: psycopg.Connection) -> None:
         "SELECT count(id) AS len FROM prompt_queue WHERE status='pending' OR status='assigned' AND paid=TRUE;"
     ).fetchone()[0]
     if queue_empty:
-        admin(f"\N{Octagonal Sign} {hostname}")
+        admin(f"\N{scales}\N{chart with downwards trend}\N{octagonal sign} {hostname}")
         sys.exit(0)
     if workers == 1:
         # nobody else has taken assignments, we just finished ours
@@ -133,9 +139,8 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
         """UPDATE prompt_queue SET status='pending', assigned_at=null
         WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
     )  # maybe this is a trigger
-
     paid = (
-        "" if os.getenv("FREE") else "AND paid=TRUE"
+        "AND paid=FALSE" if os.getenv("FREE") else "AND paid=TRUE"
     )  # should be used by every instance except the first
     maybe_id = conn.execute(
         f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY signal_ts ASC LIMIT 1;"
@@ -155,7 +160,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 def main() -> None:
     Path("./input").mkdir(exist_ok=True)
-    admin(f"starting postgres_jobs on {hostname}")
+    admin(f"\N{artist palette}\N{construction worker}\N{hiking boot} {hostname}")
     logging.info("starting postgres_jobs on %s", hostname)
     # clear failed instances
     # try to get an id. if we can't, there's no work, and we should stop
@@ -263,7 +268,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     #     feedforward_path = f"results/single/{prompt.slug}.png"
     #     feedforward.generate_forward(prompt.prompt, out_path=feedforward_path)
     #     loss = -1
-    if 1: # else: # pylint: disable=using-constant-test
+    if 1:  # else: # pylint: disable=using-constant-test
         if not generator or not generator.same_model(args):
             # hopefully purge memory used by previous model
             del generator
@@ -299,6 +304,7 @@ def post(result: Result, prompt: Prompt) -> None:
         files={"image": f},
     )
     logging.info(resp)
+    # if not prompt.params.get("private")
     post_tweet(result, prompt)
     bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
     requests.post(
