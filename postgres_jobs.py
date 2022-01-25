@@ -184,9 +184,9 @@ def main() -> None:
                 fmt = """UPDATE prompt_queue SET status='uploading', loss=%s, elapsed_gpu=%s, filepath=%s, seed=%s WHERE id=%s;"""
                 params = [
                     result.loss,
-                    result.seed,
                     result.elapsed,
                     result.filepath,
+                    result.seed,
                     prompt.prompt_id,
                 ]
                 logging.info("set uploading %s", prompt)
