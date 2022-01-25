@@ -215,7 +215,7 @@ class Generator:
         ).movedim(3, 1)
         return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
 
-    def generate(self, args: "BetterNamespace") -> float:
+    def generate(self, args: "BetterNamespace") -> tuple[float, int]:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         cut_size = self.perceptor.visual.input_resolution
         embedding_dimension = self.model.quantize.e_dim
@@ -232,7 +232,10 @@ class Generator:
         ]
 
         if args.seed is not None:
-            torch.manual_seed(args.seed)
+            seed = args.seed
+            torch.manual_seed(int(seed))
+        else:
+            seed = torch.seed()
 
         if args.init_image:
             pil_image = Image.open(args.init_image).convert("RGB")
@@ -375,7 +378,7 @@ class Generator:
                 # pbar.update(1)
         except KeyboardInterrupt:
             pass
-        return float(loss)
+        return float(loss), seed
         # steps_without_checkin = 0
         # with tqdm() as pbar:
         #     lossAll = []
@@ -425,7 +428,6 @@ base_args = BetterNamespace(
     ],
     # text: override prompt
     image_prompts=[],
-    noise_prompt_seeds=[],
     noise_prompt_weights=[],
     size=[780, 480],
     init_image=None,

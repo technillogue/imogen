@@ -61,10 +61,8 @@ def admin(msg: str) -> None:
     )
 
 
-paid = "" if os.getenv("FREE") else "paid "
-
-
 def stop() -> None:
+    paid = "" if os.getenv("FREE") else "paid "
     logging.debug("stopping")
     if os.getenv("POWEROFF"):
         admin(
@@ -131,6 +129,7 @@ class Prompt:
 class Result:
     elapsed: int
     loss: float
+    seed: str
     filepath: str
 
 
@@ -182,9 +181,10 @@ def main() -> None:
                 generator, result = handle_item(generator, prompt)
                 # success
                 start_post = time.time()
-                fmt = """UPDATE prompt_queue SET status='uploading', loss=%s, elapsed_gpu=%s, filepath=%s WHERE id=%s;"""
+                fmt = """UPDATE prompt_queue SET status='uploading', loss=%s, elapsed_gpu=%s, filepath=%s, seed=%s WHERE id=%s;"""
                 params = [
                     result.loss,
+                    result.seed,
                     result.elapsed,
                     result.filepath,
                     prompt.prompt_id,
@@ -275,11 +275,11 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
             generator = clipart.Generator(args)
         if args.profile:
             with cProfile.Profile() as profiler:
-                loss = generator.generate(args)
+                loss, seed = generator.generate(args)
             profiler.dump_stats(f"profiling/{clipart.version}.stats")
             logging.info("generated with stats")
         else:
-            loss = generator.generate(args)
+            loss, seed = generator.generate(args)
             logging.info("generated")
             if video:
                 mk_video.video(path)
@@ -288,6 +288,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
         elapsed=round(time.time() - start_time),
         filepath=feedforward_path or f"{path}/{fname}",
         loss=round(loss, 4),
+        seed=str(seed),
     )
 
 
@@ -298,12 +299,18 @@ def post(result: Result, prompt: Prompt) -> None:
     if result.loss:
         message += f"{result.loss} loss,"
     message += f" v{clipart.version}."
-    resp = requests.post(
-        f"{prompt.url or admin_signal_url}/attachment",
-        params={"message": message, "id": str(prompt.prompt_id)},
-        files={"image": f},
-    )
-    logging.info(resp)
+    for i in range(3):
+        try:
+            resp = requests.post(
+                f"{prompt.url or admin_signal_url}/attachment",
+                params={"message": message, "id": str(prompt.prompt_id)},
+                files={"image": f},
+            )
+            logging.info(resp)
+            break
+        except requests.RequestException:
+            logging.info("pausing before retry")
+            time.sleep(i)
     # if not prompt.params.get("private")
     post_tweet(result, prompt)
     bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
