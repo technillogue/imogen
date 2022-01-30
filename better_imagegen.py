@@ -18,7 +18,7 @@ from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
 from CLIP import clip
-from utils import resample  # , resize_image
+from utils import resample, resize_image
 
 sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
@@ -275,6 +275,17 @@ class Generator:
         ]
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
+
+        normalize = transforms.Normalize(
+            mean=[0.48145466, 0.4578275, 0.40821073],
+            std=[0.26862954, 0.26130258, 0.27577711],
+        )
+        for path in args.image_prompts:
+            is_crossfade = False
+            img = resize_image(Image.open(path).convert("RGB"), (sideX, sideY))
+            batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
+            embed = self.perceptor.encode_image(normalize(batch)).float()
+            prompts.append(Prompt(embed).to(device))
         # iterations = (
         #     (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
         #     if is_crossfade
@@ -328,9 +339,7 @@ class Generator:
                 mean=[0.48145466, 0.4578275, 0.40821073],
                 std=[0.26862954, 0.26130258, 0.27577711],
             )
-
             iii = self.perceptor.encode_image(normalize(cutouts)).float()
-
             result = []
             # for cutout in cutouts:
             #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))

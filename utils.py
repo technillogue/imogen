@@ -6,6 +6,7 @@ from typing import Optional, cast
 import torch
 from torch import Tensor
 from torch.nn import functional as F
+from PIL import Image
 
 
 @functools.cache  # don't load the same env more than once?
@@ -87,8 +88,8 @@ def resample(input: Tensor, size: tuple[int, int], align_corners: bool = True) -
     return F.interpolate(input, size, mode="bicubic", align_corners=align_corners)
 
 
-# def resize_image(image, out_size):
-#     ratio = image.size[0] / image.size[1]
-#     area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
-#     size = round((area * ratio) ** 0.5), round((area / ratio) ** 0.5)
-#     return image.resize(size, Image.LANCZOS)
+def resize_image(image, out_size):
+    ratio = image.size[0] / image.size[1]
+    area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
+    size = round((area * ratio) ** 0.5), round((area / ratio) ** 0.5)
+    return image.resize(size, Image.LANCZOS)

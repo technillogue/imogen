@@ -255,6 +255,9 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     if init_image := prompt.param_dict.get("init_image"):
         # download the image from redis
         open(init_image, "wb").write(r[init_image])
+    for image_prompt in prompt.param_dict.get("image_prompts", []):
+        open(image_prompt, "wb").write(r[image_prompt])
+
     prompt.param_dict["video"] = video
     args = args.with_update(prompt.param_dict)
     logging.info(args)
