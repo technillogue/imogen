@@ -429,12 +429,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=[
-        "the moonlit room",
-        # "a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream within a dream",
-        # "faerie rave",
-        # "a completely normal forest with no supernatural entities in sight",
-    ],
+    prompts=[],
     # text: override prompt
     image_prompts=[],
     noise_prompt_weights=[],
