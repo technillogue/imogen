@@ -18,6 +18,9 @@ torch = "*"
 torchvision = "*"
 tqdm = "*"
 TwitterAPI = "*"
+numpy = "*"
+opencv-python = "*"
+pillow = "*"
 
 [dev-packages]
 

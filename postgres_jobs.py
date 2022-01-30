@@ -311,8 +311,8 @@ def post(result: Result, prompt: Prompt) -> None:
         except requests.RequestException:
             logging.info("pausing before retry")
             time.sleep(i)
-    # if not prompt.params.get("private")
-    post_tweet(result, prompt)
+    if not prompt.param_dict.get("nopost"):
+        post_tweet(result, prompt)
     bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
     requests.post(
         f"https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/imoges/{prompt.slug}.png",
