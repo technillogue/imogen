@@ -339,7 +339,7 @@ class Generator:
                 mean=[0.48145466, 0.4578275, 0.40821073],
                 std=[0.26862954, 0.26130258, 0.27577711],
             )
-            iii = self.perceptor.encode_image(normalize(cutouts)).float()
+            generated_image_embedding  = self.perceptor.encode_image(normalize(cutouts)).float()
             result = []
             # for cutout in cutouts:
             #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
@@ -348,7 +348,7 @@ class Generator:
                 result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
             for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
-                result.append(prompt(iii))
+                result.append(prompt(generated_image_embedding))
 
                 # maybe we want to put this in a separate calculate_loss function
                 # that handles checking if we're fading?

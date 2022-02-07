@@ -78,7 +78,8 @@ def stop() -> None:
         time.sleep(15)
 
 
-def scale_in(conn: psycopg.Connection) -> None:
+# this isn't used?
+def maybe_scale_in(conn: psycopg.Connection) -> None:
     if not os.getenv("EXIT_ON_LOAD"):
         return
     workers = conn.execute(
@@ -141,8 +142,11 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     paid = (
         "AND paid=FALSE" if os.getenv("FREE") else "AND paid=TRUE"
     )  # should be used by every instance except the first
+    selector = os.getenv("SELECTOR")
+    selector_cond = "AND selector=%s" if selector else ""
     maybe_id = conn.execute(
-        f"SELECT id FROM prompt_queue WHERE status='pending' {paid} ORDER BY signal_ts ASC LIMIT 1;"
+        f"SELECT id FROM prompt_queue WHERE status='pending' {selector_cond} {paid} ORDER BY signal_ts ASC LIMIT 1;",
+        [selector] if selector else [],
     ).fetchone()
     if not maybe_id:
         return None
@@ -214,6 +218,7 @@ def main() -> None:
                 )
                 time.sleep(backoff)
                 backoff *= 1.5
+            maybe_scale_in()
     finally:
         conn.close()
 
@@ -262,7 +267,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     args = args.with_update(prompt.param_dict)
     logging.info(args)
     path = f"output/{clipart.mk_slug(args.prompts)}"
-    feedforward_path = ""
+    # feedforward_path = ""
     start_time = time.time()
     # if prompt.param_dict.get("feedforward"):
     #     feedforward_path = f"results/single/{prompt.slug}/progress.png"
@@ -289,7 +294,8 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
     fname = "video.mp4" if video else "progress.png"
     return generator, Result(
         elapsed=round(time.time() - start_time),
-        filepath=feedforward_path or f"{path}/{fname}",
+        # filepath=feedforward_path or f"{path}/{fname}",
+        filepath=f"{path}/{fname}",
         loss=round(loss, 4),
         seed=str(seed),
     )
