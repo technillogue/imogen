@@ -218,7 +218,7 @@ def main() -> None:
                 )
                 time.sleep(backoff)
                 backoff *= 1.5
-            maybe_scale_in()
+            maybe_scale_in(conn)
     finally:
         conn.close()
 
