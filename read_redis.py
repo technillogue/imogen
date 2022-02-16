@@ -1,4 +1,5 @@
 #!/usr/bin/python3.9
+# Copyright (c) 2022 Sylvie Liberman
 # pylint: disable=consider-using-with,subprocess-run-check
 import cProfile
 import json
