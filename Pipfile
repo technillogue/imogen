@@ -34,4 +34,4 @@ allow_prereleases = true
 extras = [ "pool", "binary",]
 
 [packages.b762515]
-file = "https://download.pytorch.org/whl/cu113/torch-1.10.1%2Bcu113-cp39-cp39-linux_x86_64.whl"
+file = "https://download.pytorch.org/whl/cu113/torch-1.10.2%2Bcu113-cp39-cp39-linux_x86_64.whl"

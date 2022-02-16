@@ -172,6 +172,31 @@ class Prompt(nn.Module):
     def describe(self) -> None:
         print(f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. ", end="")
 
+def add_xmp_data(nombrefichero):
+    imagen = ImgTag(filename=nombrefichero)
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'creator', 'VQGAN+CLIP', {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    if args.prompts:
+        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', " | ".join(args.prompts), {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    else:
+        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', 'None', {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'i', str(i), {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'model', nombre_modelo, {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'seed',str(seed) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'input_images',str(input_images) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    #for frases in args.prompts:
+    #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.close()
+
+def add_stegano_data(filename):
+    data = {
+        "title": " | ".join(args.prompts) if args.prompts else None,
+        "notebook": "VQGAN+CLIP",
+        "i": i,
+        "model": nombre_modelo,
+        "seed": str(seed),
+        "input_images": input_images
+    }
+    lsb.hide(filename, json.dumps(data)).save(filename)
 
 class Generator:
     def __init__(self, args: "BetterNamespace") -> None:

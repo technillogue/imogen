@@ -28,10 +28,7 @@ import utils
 hostname = socket.gethostname()
 logging.getLogger().setLevel("DEBUG")
 twitter_api = t.TwitterAPI(
-    "qxmCL5ebziSwOIlf3MByuhRvY",
-    "3sj1HeUXPeZ3YEG45j1fa1ckGvCQI2lTmg39QUue1bK69KPtGL",
-    "1442633760315375621-UreMIwMZK3x7Povds8A4ruEbS7VPeD",
-    "INQ5JoET33lxjoIyT8VO557iPFd9Y2uAuxhZbUUeepzQq",
+    *utils.get_secret("TWITTER_CREDS").split(","),
     api_version="1.1",
 )
 username = "@dreambs3"

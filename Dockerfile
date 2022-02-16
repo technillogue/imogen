@@ -4,6 +4,7 @@ RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST"
 RUN apt update
 RUN DEBIAN_FRONTEND="noninteractive" apt install -yy python3.9 python3.9-venv pipenv
 RUN python3.9 -m venv /app/venv
+ENV PIP_FIND_LINKS=https://download.pytorch.org/whl/cu113/torch_stable.html
 COPY Pipfile.lock Pipfile /app/
 RUN VIRTUAL_ENV=/app/venv pipenv install 
 
