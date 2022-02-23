@@ -1,5 +1,6 @@
 #!/usr/bin/python3.9
 # Copyright (c) 2022 Sylvie Liberman
+# Copyright (c) 2021 Katherine Crowson
 # import warnings
 # warnings.simplefilter("ignore")
 import logging

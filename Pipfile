@@ -14,13 +14,14 @@ pytorch-lightning = "*"
 redis = "*"
 regex = "*"
 requests = "*"
-torch = "*"
+torch = ">=1.7"
 torchvision = "*"
 tqdm = "*"
 TwitterAPI = "*"
-# numpy = "*"
-# opencv-python = "*"
-# pillow = "*"
+numpy = "*"
+opencv-python = "*"
+Pillow = "*"
+opencv-python-headless = "*"
 
 [dev-packages]
 

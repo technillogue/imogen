@@ -1,3 +1,4 @@
+# Copyright (c) 2022 Sylvie Liberman
 import math
 import os
 import functools
