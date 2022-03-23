@@ -1,3 +1,13 @@
+## 1.2.4
+
+- fix psycopg deps
+
+## 1.2.3
+
+- use correct content-type uploading to s3
+- always use selector to avoid treating esrgan as a normal prompt
+- poetry
+
 ## 1.2.2 
 
 - upgrade pytorch version? apparent regression since 1.0.3

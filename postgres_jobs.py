@@ -137,14 +137,10 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
         """UPDATE prompt_queue SET status='pending', assigned_at=null
         WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
     )  # maybe this is a trigger
-    paid = (
-        "AND paid=FALSE" if os.getenv("FREE") else "AND paid=TRUE"
-    )  # should be used by every instance except the first
-    selector = os.getenv("SELECTOR")
-    selector_cond = "AND selector=%s" if selector else ""
     maybe_id = conn.execute(
-        f"SELECT id FROM prompt_queue WHERE status='pending' {selector_cond} {paid} ORDER BY signal_ts ASC LIMIT 1;",
-        [selector] if selector else [],
+        f"""SELECT id FROM prompt_queue WHERE status='pending'
+        AND selector=%s AND paid=%s ORDER BY signal_ts ASC LIMIT 1;""",
+        [os.getenv("SELECTOR"), bool(os.getenv("FREE"))],
     ).fetchone()
     if not maybe_id:
         return None
@@ -321,9 +317,10 @@ def post(result: Result, prompt: Prompt) -> None:
     if not prompt.param_dict.get("nopost"):
         post_tweet(result, prompt)
     bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
+    mime = "video/mp4" if result.filepath.endswith("mp4") else "image/png"
     requests.post(
         f"https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/imoges/{prompt.slug}.png",
-        headers={"Authorization": bearer},
+        headers={"Authorization": bearer, "Content-Type": mime},
         data=open(result.filepath, mode="rb").read(),
     )
     os.remove(result.filepath)

@@ -1,0 +1,32 @@
+[tool.poetry]
+name = "imogen"
+version = "1.2.3"
+description = ""
+authors = ["technillogue <technillogue@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.27.1"
+tqdm = "^4.63.0"
+einops = "^0.4.1"
+ftfy = "^6.1.1"
+imageio = "^2.16.1"
+imageio-ffmpeg = "^0.4.5"
+kornia = "^0.6.4"
+numpy = "^1.22.3"
+omegaconf = "^2.1.1"
+opencv-python-headless = "^4.5.5"
+Pillow = "^9.0.1"
+psycopg = {extras = ["pool", "binary"], version = "^3.0.10"}
+torch = {url = "https://download.pytorch.org/whl/cu113/torch-1.10.2%2Bcu113-cp39-cp39-linux_x86_64.whl"}
+pytorch-lightning = "^1.5.10"
+redis = "^4.1.4"
+regex = "^2022.3.15"
+torchvision = "^0.12.0"
+TwitterAPI = "^2.7.12"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
