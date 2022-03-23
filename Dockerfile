@@ -15,5 +15,5 @@ RUN git clone https://github.com/openai/CLIP && git clone https://github.com/Com
 COPY ./download_modals.sh .
 RUN ./download_modals.sh
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
-COPY ./.git/COMMIT_EDITMSG ./CHANGELOG.md ./utils.py ./better_imagegen.py ./mk_video.py ./postgres_jobs.py /app/ 
+COPY ./CHANGELOG.md ./utils.py ./better_imagegen.py ./mk_video.py ./postgres_jobs.py /app/ 
 ENTRYPOINT ["/usr/bin/python3", "/app/postgres_jobs.py"]
