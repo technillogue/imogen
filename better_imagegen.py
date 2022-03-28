@@ -38,6 +38,7 @@ logger.addHandler(console_handler)
 
 
 def mk_slug(text: Union[str, list[str]]) -> str:
+    "strip offending charecters"
     text = "".join(text).encode("ascii", errors="ignore").decode()
     return (
         "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200]
@@ -46,6 +47,7 @@ def mk_slug(text: Union[str, list[str]]) -> str:
 
 
 class ReplaceGrad(torch.autograd.Function):
+    # replaces gradients used for the automatic gradient descent
     @staticmethod
     def forward(ctx, x_forward, x_backward):  # type: ignore
         ctx.shape = x_backward.shape
@@ -60,6 +62,7 @@ replace_grad = ReplaceGrad.apply
 
 
 class ClampWithGrad(torch.autograd.Function):
+    # i don't fully understand what this does
     @staticmethod
     def forward(ctx, input, min, max):  # type: ignore
         ctx.min = min
@@ -81,6 +84,7 @@ clamp_with_grad = ClampWithGrad.apply
 
 
 def vector_quantize(x: Tensor, codebook: Tensor) -> Tensor:
+    # https://arxiv.org/abs/1711.00937 is one of the papers introducing vector quantization
     d = (
         x.pow(2).sum(dim=-1, keepdim=True)
         + codebook.pow(2).sum(dim=1)
@@ -94,9 +98,13 @@ def vector_quantize(x: Tensor, codebook: Tensor) -> Tensor:
 class MakeCutouts(nn.Module):
     def __init__(self, cut_size: Any, cutn: int, cut_pow: float = 1.0) -> None:
         super().__init__()
+        # size the cuts are resampled to (CLIP's input resolution)
         self.cut_size = cut_size
+        # number of cuouts
         self.cutn = cutn
+        # exponent for cut size to scale how big/small they are
         self.cut_pow = cut_pow
+        # add some noise to the cutouts for cronchier gradients
         self.augs = nn.Sequential(
             K.RandomHorizontalFlip(p=0.5),
             # K.RandomSolarize(0.01, 0.01, p=0.7),
@@ -113,14 +121,18 @@ class MakeCutouts(nn.Module):
         min_size = min(sideX, sideY, self.cut_size)
         cutouts = []
         for _ in range(self.cutn):
+            # pick a size smaller than the max size and bigger than the min size
             size = int(
                 torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
             )
+            # choose offset
             offsetx = torch.randint(0, sideX - size + 1, ())
             offsety = torch.randint(0, sideY - size + 1, ())
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
+            # resample to CLIP's input resolution
             resampled = resample(cutout, (self.cut_size, self.cut_size))
             cutouts.append(resampled)
+        # run each cutout through those augmentations
         batch = self.augs(torch.cat(cutouts, dim=0))
         if self.noise_factor:
             facs = batch.new_empty([self.cutn, 1, 1, 1]).uniform_(0, self.noise_factor)
@@ -129,6 +141,7 @@ class MakeCutouts(nn.Module):
 
 
 def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
+    "load the VQGAN model from a checkpoint path and config path"
     config = OmegaConf.load(config_path)
     if config.model.target == "taming.models.vqgan.VQModel":
         model = vqgan.VQModel(**config.model.params)
@@ -161,10 +174,12 @@ class Prompt(nn.Module):
         self.register_buffer("weight", torch.as_tensor(weight))
         self.register_buffer("stop", torch.as_tensor(stop))
 
-    def forward(self, input: Tensor) -> Tensor:
-        input_normed = F.normalize(input.unsqueeze(1), dim=2)
-        embed_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
-        dists = input_normed.sub(embed_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
+    def forward(self, image_embedding: Tensor) -> Tensor:
+        # euclidian norm
+        image_normed = F.normalize(image_embedding.unsqueeze(1), dim=2)
+        text_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
+        # take cosine distance
+        dists = image_normed.sub(text_normed).norm(dim=2).div(2).arcsin().pow(2).mul(2)
         dists = dists * self.weight.sign()
         return (
             self.weight.abs()
@@ -174,20 +189,57 @@ class Prompt(nn.Module):
     def describe(self) -> None:
         print(f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. ", end="")
 
+
 def add_xmp_data(nombrefichero):
     imagen = ImgTag(filename=nombrefichero)
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'creator', 'VQGAN+CLIP', {"prop_array_is_ordered":True, "prop_value_is_array":True})
+    imagen.xmp.append_array_item(
+        libxmp.consts.XMP_NS_DC,
+        "creator",
+        "VQGAN+CLIP",
+        {"prop_array_is_ordered": True, "prop_value_is_array": True},
+    )
     if args.prompts:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', " | ".join(args.prompts), {"prop_array_is_ordered":True, "prop_value_is_array":True})
+        imagen.xmp.append_array_item(
+            libxmp.consts.XMP_NS_DC,
+            "title",
+            " | ".join(args.prompts),
+            {"prop_array_is_ordered": True, "prop_value_is_array": True},
+        )
     else:
-        imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'title', 'None', {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'i', str(i), {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'model', nombre_modelo, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'seed',str(seed) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'input_images',str(input_images) , {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    #for frases in args.prompts:
+        imagen.xmp.append_array_item(
+            libxmp.consts.XMP_NS_DC,
+            "title",
+            "None",
+            {"prop_array_is_ordered": True, "prop_value_is_array": True},
+        )
+    imagen.xmp.append_array_item(
+        libxmp.consts.XMP_NS_DC,
+        "i",
+        str(i),
+        {"prop_array_is_ordered": True, "prop_value_is_array": True},
+    )
+    imagen.xmp.append_array_item(
+        libxmp.consts.XMP_NS_DC,
+        "model",
+        nombre_modelo,
+        {"prop_array_is_ordered": True, "prop_value_is_array": True},
+    )
+    imagen.xmp.append_array_item(
+        libxmp.consts.XMP_NS_DC,
+        "seed",
+        str(seed),
+        {"prop_array_is_ordered": True, "prop_value_is_array": True},
+    )
+    imagen.xmp.append_array_item(
+        libxmp.consts.XMP_NS_DC,
+        "input_images",
+        str(input_images),
+        {"prop_array_is_ordered": True, "prop_value_is_array": True},
+    )
+    # for frases in args.prompts:
     #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
     imagen.close()
+
 
 def add_stegano_data(filename):
     data = {
@@ -196,18 +248,24 @@ def add_stegano_data(filename):
         "i": i,
         "model": nombre_modelo,
         "seed": str(seed),
-        "input_images": input_images
+        "input_images": input_images,
     }
     lsb.hide(filename, json.dumps(data)).save(filename)
 
+
 class Generator:
+    "class for holding onto the models"
+
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            "cpu"
+        )  # "cuda:0" if torch.cuda.is_available() else "cpu")
         print("Using device:", self.device)
         self.model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(
             self.device
         )
+        # perceptor is CLIP, it calculates the loss between generated image and text prompt
         self.perceptor = (
             clip.load(args.clip_model, jit=False)[0]
             .eval()
@@ -216,6 +274,7 @@ class Generator:
         )
 
     def same_model(self, new_args: "BetterNamespace") -> bool:
+        "are the new args the same model as we have?"
         return (
             self.args.vqgan_checkpoint == new_args.vqgan_checkpoint
             and self.args.vqgan_config == new_args.vqgan_config
@@ -223,7 +282,10 @@ class Generator:
         )
 
     def embed(self, text: str) -> Tensor:
+        "CLIP embed the text, stripping url"
+
         def no_url() -> Iterable[str]:
+            "strip urls"
             for word in text.split(" "):
                 scheme = word.startswith("http")
                 twt = "twitter.com" in word
@@ -237,13 +299,15 @@ class Generator:
         ).float()
 
     def synth(self, z: Tensor) -> Tensor:
+        "turn z into an image by vector quantizing then decoding"
         z_q = vector_quantize(
             z.movedim(1, 3), self.model.quantize.embedding.weight
         ).movedim(3, 1)
         return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
 
     def generate(self, args: "BetterNamespace") -> tuple[float, int]:
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        "actually generate an image using args"
+        device = torch.device("cpu")  # cuda:0" if torch.cuda.is_available() else "cpu")
         cut_size = self.perceptor.visual.input_resolution
         embedding_dimension = self.model.quantize.e_dim
         f = 2 ** (self.model.decoder.num_resolutions - 1)
@@ -264,6 +328,7 @@ class Generator:
         else:
             seed = torch.seed()
 
+        # z, the tensor representing the image in progress, is initialized as either the init image we got, or noise
         if args.init_image:
             pil_image = Image.open(args.init_image).convert("RGB")
             pil_image = pil_image.resize((sideX, sideY), Image.LANCZOS)
@@ -271,6 +336,7 @@ class Generator:
                 TF.to_tensor(pil_image).to(device).unsqueeze(0) * 2 - 1
             )
         else:
+            # start with noise
             one_hot = F.one_hot(
                 torch.randint(n_toks, [toksY * toksX], device=device), n_toks
             ).float()
@@ -278,6 +344,8 @@ class Generator:
             z = z.view([-1, toksY, toksX, embedding_dimension]).permute(0, 3, 1, 2)
         z_orig = z.clone()
         z.requires_grad_(True)
+        # lr is the learning rate for our optimizer
+        # https://arxiv.org/abs/1412.6980
         opt = optim.Adam([z], lr=args.step_size)
 
         print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
@@ -291,6 +359,7 @@ class Generator:
         # this uses global z
         @torch.no_grad()
         def checkin(i: int, losses: "list[Tensor]") -> None:
+            "log loss and save an image"
             losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
             tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
             out = self.synth(z)
@@ -303,15 +372,20 @@ class Generator:
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
 
+        # magic numbers divined by crowsonkb
         normalize = transforms.Normalize(
             mean=[0.48145466, 0.4578275, 0.40821073],
             std=[0.26862954, 0.26130258, 0.27577711],
         )
         for path in args.image_prompts:
             is_crossfade = False
+            # resize images to the right resolution
             img = resize_image(Image.open(path).convert("RGB"), (sideX, sideY))
+            # make some cutouts
             batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
+            # embed the image
             embed = self.perceptor.encode_image(normalize(batch)).float()
+            # use it as a prompt because prompts just take whatever vectors
             prompts.append(Prompt(embed).to(device))
         # iterations = (
         #     (len(args.prompts) - 1) * (args.dwell + args.fade) + args.dwell
@@ -324,14 +398,19 @@ class Generator:
         def crossfade_prompts(
             prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
         ) -> "list[Prompt]":
+            "figure out the prompts and weights to use this iteration"
             if not is_crossfade:
                 return prompts
             # realtime queue additions??
             if prompts[0].dwelt < dwell:
+                # we're still dwelling on the current prompt
                 prompts[0].dwelt += 1
                 # print("dwell: ", prompts[0].dwelt)
             elif prompts[0].weight > 0 and len(prompts) >= 2:
+                # there's at least two prompts, and the first one is has nonzero weight
+                # we must be fading
                 first, second = prompts
+                # first prompt gets less weight
                 waning_weight = float(first.weight) - 1 / fade
                 waxing_weight = min(1.0, float(second.weight) + 1 / fade)
                 prompts[0] = Prompt(
@@ -341,10 +420,12 @@ class Generator:
                     second.embed, waxing_weight, dwelt=second.dwelt, tag=second.tag
                 )
             else:
+                # first prompt has zero weight, get rid of it
                 prompts.pop(0)
                 # ???
                 # prompt = r.lpop("twitch_queue") # ???
                 if prompt_queue:
+                    # grab the next prompt if we have one, otherwise raise IndexError
                     next_text = prompt_queue.pop(0)
                     print("next text: ", next_text)
                     prompts.append(
@@ -360,13 +441,16 @@ class Generator:
 
         # uses prompts, prompt_queue...
         def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
+            "synthesize an image and evaluate it for loss"
             out = self.synth(z)
             cutouts = make_cutouts(out)
             normalize = transforms.Normalize(
                 mean=[0.48145466, 0.4578275, 0.40821073],
                 std=[0.26862954, 0.26130258, 0.27577711],
             )
-            generated_image_embedding  = self.perceptor.encode_image(normalize(cutouts)).float()
+            generated_image_embedding = self.perceptor.encode_image(
+                normalize(cutouts)
+            ).float()
             result = []
             # for cutout in cutouts:
             #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
@@ -376,10 +460,10 @@ class Generator:
 
             for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
                 result.append(prompt(generated_image_embedding))
-
                 # maybe we want to put this in a separate calculate_loss function
                 # that handles checking if we're fading?
             if args.video:
+                # if we're doing a video we need every single frame
                 with torch.no_grad():
                     TF.to_pil_image(out[0].cpu()).save(
                         f"output/{slug}/steps/{i:04}.png"
@@ -389,14 +473,17 @@ class Generator:
             return result
 
         def train(i: int) -> float:
+            "a single training iteration"
             opt.zero_grad()
             lossAll = ascend_txt(i, z)
             if i % args.display_freq == 0:
                 checkin(i, lossAll)
             loss = sum(lossAll)
+            # this tells autograd to adjust all the weights based on this new loss
             loss.backward()
             opt.step()
             with torch.no_grad():
+                # you have to make sure z isn't too big or too small
                 z.copy_(z.maximum(z_min).minimum(z_max))
             return float(loss)
 
@@ -438,6 +525,7 @@ class Generator:
 
 
 class BetterNamespace:
+    "this is just for compatibility with argparse.Namespace, but with updates"
     def __init__(self, **kwargs: Any) -> None:
         self.mapping = kwargs
 
@@ -456,7 +544,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=[],
+    prompts=["a better world"],
     # text: override prompt
     image_prompts=[],
     noise_prompt_weights=[],

@@ -52,6 +52,7 @@ r = redis.Redis(host=host, port=int(port), password=password)
 
 
 def admin(msg: str) -> None:
+    """send a message to admin"""
     logging.info(msg)
     requests.post(
         f"{admin_signal_url}/admin",
@@ -60,6 +61,7 @@ def admin(msg: str) -> None:
 
 
 def stop() -> None:
+    "check envvars if we should exit depending on where we're running, or sleep"
     paid = "" if os.getenv("FREE") else "paid "
     logging.debug("stopping")
     if os.getenv("POWEROFF"):
@@ -78,6 +80,7 @@ def stop() -> None:
 
 # this isn't used?
 def maybe_scale_in(conn: psycopg.Connection) -> None:
+    "check the ratio of paid prompts to paid workers and potentially stop"
     if not os.getenv("EXIT_ON_LOAD"):
         return
     workers = conn.execute(
@@ -105,9 +108,9 @@ def maybe_scale_in(conn: psycopg.Connection) -> None:
         )
         sys.exit(0)
 
-
 @dataclasses.dataclass
 class Prompt:
+    "holds database result with prompt information"
     prompt_id: int
     prompt: str
     url: str
@@ -126,6 +129,7 @@ class Prompt:
 
 @dataclasses.dataclass
 class Result:
+    "info after generated a prompt used to update database"
     elapsed: int
     loss: float
     seed: str
@@ -133,10 +137,13 @@ class Result:
 
 
 def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
+    "try to get a prompt and mark it as assigned if possible"
+    # mark prompts that have been assigned for more than 10 minutes as unassigned
     conn.execute(
         """UPDATE prompt_queue SET status='pending', assigned_at=null
         WHERE status='assigned' AND assigned_at  < (now() - interval '10 minutes');"""
     )  # maybe this is a trigger
+    # try to select something
     maybe_id = conn.execute(
         f"""SELECT id FROM prompt_queue WHERE status='pending'
         AND selector=%s AND paid=%s ORDER BY signal_ts ASC LIMIT 1;""",
@@ -147,6 +154,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     prompt_id = maybe_id[0]
     cursor = conn.cursor(row_factory=class_row(Prompt))
     logging.info("getting")
+    # mark it as assigned, returning only if it got updated 
     maybe_prompt = cursor.execute(
         "UPDATE prompt_queue SET status='assigned', assigned_at=now(), hostname=%s WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
         [hostname, prompt_id],
@@ -156,6 +164,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
 
 
 def main() -> None:
+    "setup, get prompts, handle them, mark as uploading, upload, mark done"
     Path("./input").mkdir(exist_ok=True)
     admin(f"\N{artist palette}\N{construction worker}\N{hiking boot} {hostname}")
     logging.info("starting postgres_jobs on %s", hostname)
@@ -165,8 +174,8 @@ def main() -> None:
     # generate the prompt
     backoff = 60.0
     generator = None
-    # catch some database connection errors
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
+    # catch some database connection errors
     try:
         while 1:
             # try to claim
@@ -196,7 +205,6 @@ def main() -> None:
                 )
                 logging.info("set done, poasting time: %s", time.time() - start_post)
                 backoff = 60
-
             except Exception as e:  # pylint: disable=broad-except
                 logging.info("caught exception")
                 error_message = traceback.format_exc()
@@ -235,6 +243,7 @@ Gen = Optional[clipart.Generator]
 
 
 def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
+    "finagle settings, generate it depending on settings, make a video if appropriate"
     video = False
     try:
         settings = json.loads(prompt.prompt)
@@ -286,6 +295,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
             if video:
                 mk_video.video(path)
     fname = "video.mp4" if video else "progress.png"
+    # return the generator so it can be reused
     return generator, Result(
         elapsed=round(time.time() - start_time),
         # filepath=feedforward_path or f"{path}/{fname}",
@@ -296,6 +306,7 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
 
 
 def post(result: Result, prompt: Prompt) -> None:
+    "upload to signal bot imogen, then upload to s3"
     minutes, seconds = divmod(result.elapsed, 60)
     f = open(result.filepath, mode="rb")
     message = f"{prompt.prompt}\nTook {minutes}m{seconds}s to generate,"
@@ -332,6 +343,8 @@ def post(result: Result, prompt: Prompt) -> None:
 
 
 def retry_uploads(limit: int = 10, recent: bool = False) -> None:
+    """retry uploading prompts that are available locally but never got uploaded.
+    this is only really run manually, and doesn't make as much sense with ephemeral pods"""
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     q = conn.execute(
         "select id, url, filepath from prompt_queue where status='uploading' and hostname=%s "
@@ -361,6 +374,7 @@ def retry_uploads(limit: int = 10, recent: bool = False) -> None:
 
 
 def post_tweet(result: Result, prompt: Prompt) -> None:
+    "post tweet, either all at once for images or in chunks for videos"
     logging.info("uploading to twitter")
     if not result.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
