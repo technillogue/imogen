@@ -1,0 +1,12 @@
+.git
+.mypy_cache
+__pycache__
+results
+*gz
+*ckpt
+*pth
+*png
+*jpg
+*jpeg
+*mp4
+*mov

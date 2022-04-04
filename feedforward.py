@@ -78,8 +78,8 @@ CLIP_MEAN = [0.48145466, 0.4578275, 0.40821073]
 CLIP_STD = [0.26862954, 0.26130258, 0.27577711]
 
 def mk_slug(text: Union[str, list[str]]) -> str:
-    text = "".join(text)
-    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:240]
+    text = "".join(text).encode("ascii", errors='ignore').decode()
+    return "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200] + hex(hash(text))[:4]
 
 def load_vqgan_model(config_path, checkpoint_path):
     config = OmegaConf.load(config_path)
@@ -838,11 +838,11 @@ def train(config_file, single_prompt=None):
             step += 1
     return float(loss)
 
-def generate(args: dict) -> float:
-    return train("configs/single.yaml", args["prompt"])
+def generate(prompt: str) -> float:
+    return train("configs/single.yaml", prompt)
 
-def generate_forward(args: dict, **kwargs) -> None:
-    return test("results/single/model.th", args["prompt"], **kwargs)
+def generate_forward(prompt: str, out_path: str) -> None:
+    return test("results/single/model.th", prompt, out_path=out_path)
 
 
 def test(

@@ -4,18 +4,25 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+einops = "*"
 ftfy = "*"
-regex = "*"
-tqdm = "*"
+imageio = "*"
+imageio-ffmpeg = "*"
+kornia = "*"
 omegaconf = "*"
 pytorch-lightning = "*"
-einops = "*"
-transformers = "*"
-numpy = "*"
+redis = "*"
+regex = "*"
+requests = "*"
+torch = ">=1.7"
 torchvision = "*"
-streamlit = "*"
-kornia = "*"
-imageio = "*"
+tqdm = "*"
+TwitterAPI = "*"
+numpy = "*"
+opencv-python = "*"
+Pillow = "*"
+opencv-python-headless = "*"
+
 [dev-packages]
 
 [requires]
@@ -24,5 +31,8 @@ python_version = "3.9"
 [pipenv]
 allow_prereleases = true
 
-[packages.33cf049]
-path = "./taming-transformers"
+[packages.psycopg]
+extras = [ "pool", "binary",]
+
+[packages.b762515]
+file = "https://download.pytorch.org/whl/cu113/torch-1.10.2%2Bcu113-cp39-cp39-linux_x86_64.whl"
