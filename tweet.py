@@ -37,6 +37,7 @@ def get_prompt() -> str:
     logging.info(ret)
     if not ret or not (filepath := ret[0].get("filepath")):
         return "sorry, I don't have that image saved for upsampling right now"
+    prompt = Prompt(**ret[0])
     # adjust for mp4s
     slug = (
         filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
