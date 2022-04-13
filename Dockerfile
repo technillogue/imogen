@@ -2,7 +2,7 @@ FROM python:3.9 as libbuilder
 WORKDIR /app
 RUN pip install poetry
 RUN python3.9 -m venv /app/venv 
-ENV PIP_FIND_LINKS=https://download.pytorch.org/whl/cu113/torch_stable.html
+#ENV PIP_FIND_LINKS=https://download.pytorch.org/whl/cu113/torch_stable.html
 COPY ./pyproject.toml ./poetry.lock /app/
 RUN VIRTUAL_ENV=/app/venv poetry install 
 

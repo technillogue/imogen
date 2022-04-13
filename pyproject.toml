@@ -20,7 +20,9 @@ Pillow = "^9.0.1"
 psycopg = {extras = ["pool", "binary"], version = "^3.0.10"}
 # 1.1.2 used
 # file = "https://download.pytorch.org/whl/cu113/torch-1.10.1%2Bcu113-cp39-cp39-linux_x86_64.whl"
-torch = {url = "https://download.pytorch.org/whl/cu113/torch-1.10.2%2Bcu113-cp39-cp39-linux_x86_64.whl"}
+# 1.2.4
+# torch = {url = "https://download.pytorch.org/whl/cu113/torch-1.10.2%2Bcu113-cp39-cp39-linux_x86_64.whl"}
+torch = "^1.11.0"
 pytorch-lightning = "^1.5.10"
 redis = "^4.1.4"
 regex = "^2022.3.15"

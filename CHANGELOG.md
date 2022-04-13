@@ -1,3 +1,8 @@
+## 1.2.5
+
+- torch = "^1.11.0" from pypi
+- comments and stuff
+
 ## 1.2.4
 
 - fix psycopg deps
