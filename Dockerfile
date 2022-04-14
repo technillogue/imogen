@@ -3,7 +3,8 @@ WORKDIR /app
 RUN pip install poetry
 RUN python3.9 -m venv /app/venv 
 #ENV PIP_FIND_LINKS=https://download.pytorch.org/whl/cu113/torch_stable.html
-COPY ./pyproject.toml ./poetry.lock /app/
+COPY ./pyproject.toml /app/
+ #./poetry.lock /app/
 RUN VIRTUAL_ENV=/app/venv poetry install 
 
 FROM ubuntu:hirsute

@@ -258,9 +258,7 @@ class Generator:
 
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
-        self.device = torch.device(
-            "cpu"
-        )  # "cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print("Using device:", self.device)
         self.model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(
             self.device
@@ -307,7 +305,7 @@ class Generator:
 
     def generate(self, args: "BetterNamespace") -> tuple[float, int]:
         "actually generate an image using args"
-        device = torch.device("cpu")  # cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         cut_size = self.perceptor.visual.input_resolution
         embedding_dimension = self.model.quantize.e_dim
         f = 2 ** (self.model.decoder.num_resolutions - 1)
