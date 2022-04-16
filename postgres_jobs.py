@@ -108,6 +108,7 @@ def maybe_scale_in(conn: psycopg.Connection) -> None:
         )
         sys.exit(0)
 
+
 @dataclasses.dataclass
 class Prompt:
     "holds database result with prompt information"
@@ -147,14 +148,14 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     maybe_id = conn.execute(
         f"""SELECT id FROM prompt_queue WHERE status='pending'
         AND selector=%s AND paid=%s ORDER BY signal_ts ASC LIMIT 1;""",
-        [os.getenv("SELECTOR"), bool(os.getenv("FREE"))],
+        [os.getenv("SELECTOR", ""), not bool(os.getenv("FREE"))],
     ).fetchone()
     if not maybe_id:
         return None
     prompt_id = maybe_id[0]
     cursor = conn.cursor(row_factory=class_row(Prompt))
     logging.info("getting")
-    # mark it as assigned, returning only if it got updated 
+    # mark it as assigned, returning only if it got updated
     maybe_prompt = cursor.execute(
         "UPDATE prompt_queue SET status='assigned', assigned_at=now(), hostname=%s WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
         [hostname, prompt_id],

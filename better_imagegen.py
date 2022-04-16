@@ -524,6 +524,7 @@ class Generator:
 
 class BetterNamespace:
     "this is just for compatibility with argparse.Namespace, but with updates"
+
     def __init__(self, **kwargs: Any) -> None:
         self.mapping = kwargs
 

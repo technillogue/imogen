@@ -1,3 +1,15 @@
+## 1.2.8.1
+
+- correct selector
+
+## 1.2.8
+
+- correct paid 
+
+## 1.2.6
+
+- fix
+
 ## 1.2.5
 
 - torch = "^1.11.0" from pypi
