@@ -1,3 +1,15 @@
+## 1.2.10 (unbuilt)
+
+- check only for paid/same selector on scale in
+
+## 1.2.9.1
+
+- don't drop dot
+
+## 1.2.9
+
+- put just slug as filepath
+
 ## 1.2.8.1
 
 - correct selector

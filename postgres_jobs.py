@@ -84,7 +84,8 @@ def maybe_scale_in(conn: psycopg.Connection) -> None:
     if not os.getenv("EXIT_ON_LOAD"):
         return
     workers = conn.execute(
-        "select count(distinct hostname) + 1 from prompt_queue where status='assigned'"
+        "select count(distinct hostname) + 1 from prompt_queue where status='assigned' and selector=%s and paid=true",
+        [os.getenv("SELECTOR", "")],
     ).fetchone()[0]
     queue_empty = conn.execute(
         "SELECT count(id)=0 FROM prompt_queue WHERE status='pending'"
@@ -193,7 +194,7 @@ def main() -> None:
                 params = [
                     result.loss,
                     result.elapsed,
-                    result.filepath,
+                    prompt.slug + "." + result.filepath.split(".")[-1],
                     result.seed,
                     prompt.prompt_id,
                 ]

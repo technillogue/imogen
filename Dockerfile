@@ -17,4 +17,5 @@ COPY ./download_modals.sh .
 RUN ./download_modals.sh
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
 COPY ./CHANGELOG.md ./utils.py ./better_imagegen.py ./mk_video.py ./postgres_jobs.py /app/ 
+RUN python3.9 better_imagegen.py || true
 ENTRYPOINT ["/usr/bin/python3", "/app/postgres_jobs.py"]
