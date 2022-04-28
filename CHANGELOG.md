@@ -1,3 +1,7 @@
+## 1.2.11
+
+- feature flag for tweets
+
 ## 1.2.10 (unbuilt)
 
 - check only for paid/same selector on scale in

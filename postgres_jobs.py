@@ -327,7 +327,7 @@ def post(result: Result, prompt: Prompt) -> None:
         except requests.RequestException:
             logging.info("pausing before retry")
             time.sleep(i)
-    if not prompt.param_dict.get("nopost"):
+    if not prompt.param_dict.get("nopost") and utils.get_secret("TWITTER"):
         post_tweet(result, prompt)
     bearer = "Bearer " + utils.get_secret("SUPABASE_API_KEY")
     mime = "video/mp4" if result.filepath.endswith("mp4") else "image/png"
