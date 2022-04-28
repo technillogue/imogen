@@ -565,4 +565,4 @@ base_args = BetterNamespace(
     video=False,
 )
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args)
+    Generator(base_args).generate(base_args.with_update({"max_iterations":1}))
