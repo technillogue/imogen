@@ -29,7 +29,7 @@ class Prompt:
     prompt: str
     filepath: str
 
-def get_prompt() -> str:
+def get_prompt() -> tuple[Prompt, str]:
     ret = conn.fetch(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
         order by map_len(reaction_map) desc, loss asc limit 1;"""
@@ -42,11 +42,12 @@ def get_prompt() -> str:
     slug = (
         filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
     )
-    return view_url.format(slug)
+    return prompt, view_url.format(slug)
 
-def post_tweet(prompt: Prompt) -> None:
+def post_tweet(prompt: Prompt, url: str) -> None:
     "post tweet, either all at once for images or in chunks for videos"
     logging.info("uploading to twitter")
+    requests.get(url)
     if not prompt.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
             "media/upload", None, {"media": open(prompt.filepath, mode="rb").read()}
@@ -94,4 +95,5 @@ def post_tweet(prompt: Prompt) -> None:
         except:  # pylint: disable=bare-except
             logging.error("couldn't send to admin")
 
-
+if __name__=="__main__":
+    pass
