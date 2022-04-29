@@ -2,6 +2,7 @@ import TwitterAPI as t
 import psycopg
 import requests
 import utils
+import dataclasses
 
 twitter_api = t.TwitterAPI(
     *utils.get_secret("TWITTER_CREDS").split(","),
@@ -10,7 +11,7 @@ twitter_api = t.TwitterAPI(
 
 view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/{slug}.png"
 
-conn = psycopg.connect(get_secret("DATABASE_URL"), autocommit=True)
+conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
 
 admin_signal_url = "https://imogen-renaissance.fly.dev"
 

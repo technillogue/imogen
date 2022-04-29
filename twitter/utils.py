@@ -39,4 +39,3 @@ def get_secret(key: str, env: Optional[str] = None) -> str:
     if secret.lower() in ("0", "false", "no"):
         return ""
     return secret
-
