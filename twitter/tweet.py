@@ -3,6 +3,7 @@ import psycopg
 import requests
 import utils
 import dataclasses
+import logging
 
 twitter_api = t.TwitterAPI(
     *utils.get_secret("TWITTER_CREDS").split(","),
@@ -11,7 +12,7 @@ twitter_api = t.TwitterAPI(
 
 view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/{slug}.png"
 
-conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
+
 
 admin_signal_url = "https://imogen-renaissance.fly.dev"
 
@@ -31,6 +32,7 @@ class Prompt:
     filepath: str
 
 def get_prompt() -> tuple[Prompt, str]:
+    conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.fetch(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
         order by map_len(reaction_map) desc, loss asc limit 1;"""
@@ -97,4 +99,9 @@ def post_tweet(prompt: Prompt, url: str) -> None:
             logging.error("couldn't send to admin")
 
 if __name__=="__main__":
+<<<<<<< HEAD
     pass
+=======
+
+
+>>>>>>> 5410fc5 (commit before merging)
