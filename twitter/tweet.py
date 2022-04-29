@@ -1,9 +1,12 @@
+import os
 import TwitterAPI as t
 import psycopg
 import requests
 import utils
 import dataclasses
 import logging
+
+logging.getLogger().setLevel(logging.INFO)
 
 twitter_api = t.TwitterAPI(
     *utils.get_secret("TWITTER_CREDS").split(","),
@@ -33,12 +36,12 @@ class Prompt:
 
 def get_prompt() -> tuple[Prompt, str]:
     """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
-    import pdb;pdb.set_trace()
+    # import pdb;pdb.set_trace()
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
-    ret = conn.fetch(
+    ret = conn.execute(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
         order by map_len(reaction_map) desc, loss asc limit 1;"""
-    )
+    ).fetchone()
     logging.info(ret)
     if not ret or not (filepath := ret[0].get("filepath")):
         return "sorry, I don't have that image saved for upsampling right now"
