@@ -32,6 +32,8 @@ class Prompt:
     filepath: str
 
 def get_prompt() -> tuple[Prompt, str]:
+    """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
+    import pdb;pdb.set_trace()
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.fetch(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
@@ -99,9 +101,6 @@ def post_tweet(prompt: Prompt, url: str) -> None:
             logging.error("couldn't send to admin")
 
 if __name__=="__main__":
-<<<<<<< HEAD
-    pass
-=======
-
-
->>>>>>> 5410fc5 (commit before merging)
+    while True:
+        prompt, view_url = get_prompt()
+        post_tweet(prompt,view_url)
