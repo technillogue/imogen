@@ -1,7 +1,7 @@
 import TwitterAPI as t
 import psycopg
 import requests
-from config import get_secret
+import utils
 
 twitter_api = t.TwitterAPI(
     *utils.get_secret("TWITTER_CREDS").split(","),
