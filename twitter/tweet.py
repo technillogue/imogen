@@ -36,55 +36,55 @@ class Prompt:
 
 def get_prompt() -> tuple[Prompt, str]:
     """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
-    # import pdb;pdb.set_trace()
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.execute(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
         order by map_len(reaction_map) desc, loss asc limit 1;"""
     ).fetchone()
     logging.info(ret)
-    if not ret or not (filepath := ret[0].get("filepath")):
-        return "sorry, I don't have that image saved for upsampling right now"
-    prompt = Prompt(**ret[0])
-    # adjust for mp4s
+    prompt,filepath = ret
+    prompt = Prompt(prompt=prompt,filepath=filepath)
+
     slug = (
-        filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
+       filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
     )
-    return prompt, view_url.format(slug)
+    return prompt, view_url.format(slug=slug)
 
 def post_tweet(prompt: Prompt, url: str) -> None:
     "post tweet, either all at once for images or in chunks for videos"
     logging.info("uploading to twitter")
-    requests.get(url)
+    import pdb;pdb.set_trace()
+    picture = requests.get(url).text
     if not prompt.filepath.endswith("mp4"):
         media_resp = twitter_api.request(
-            "media/upload", None, {"media": open(prompt.filepath, mode="rb").read()}
+            "media/upload", None, {"media": picture}
         )
     else:
-        bytes_sent = 0
-        total_bytes = os.path.getsize(prompt.filepath)
-        file = open(prompt.filepath, "rb")
-        init_req = twitter_api.request(
-            "media/upload",
-            {"command": "INIT", "media_type": "video/mp4", "total_bytes": total_bytes},
-        )
+        # bytes_sent = 0
+        # total_bytes = os.path.getsize(prompt.filepath)
+        # file = open(prompt.filepath, "rb")
+        # init_req = twitter_api.request(
+        #     "media/upload",
+        #     {"command": "INIT", "media_type": "video/mp4", "total_bytes": total_bytes},
+        # )
 
-        media_id = init_req.json()["media_id"]
-        segment_id = 0
+        # media_id = init_req.json()["media_id"]
+        # segment_id = 0
 
-        while bytes_sent < total_bytes:
-            chunk = file.read(4 * 1024 * 1024)
-            twitter_api.request(
-                "media/upload",
-                {
-                    "command": "APPEND",
-                    "media_id": media_id,
-                    "segment_index": segment_id,
-                },
-                {"media": chunk},
-            )
-            segment_id = segment_id + 1
-            bytes_sent = file.tell()
+        # while bytes_sent < total_bytes:
+        #     chunk = file.read(4 * 1024 * 1024)
+        #     twitter_api.request(
+        #         "media/upload",
+        #         {
+        #             "command": "APPEND",
+        #             "media_id": media_id,
+        #             "segment_index": segment_id,
+        #         },
+        #         {"media": chunk},
+        #     )
+        #     segment_id = segment_id + 1
+        #     bytes_sent = file.tell()
+        logging.info("media was video. Ignoring for now")
         media_resp = twitter_api.request(
             "media/upload", {"command": "FINALIZE", "media_id": media_id}
         )
