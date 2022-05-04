@@ -14,7 +14,6 @@ twitter_api = t.TwitterAPI(
     api_version="1.1",
 )
 
-view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/{slug}.png"
 
 
 admin_signal_url = "https://imogen-renaissance.fly.dev"
@@ -37,28 +36,37 @@ class Prompt:
     prompt_id :str
 
 
-def get_prompt() -> tuple[Optional[str], Optional[str]]:
+def get_prompt() -> tuple[Optional[Prompt], Optional[str]]:
     """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
+    view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/{slug}.png"
+
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.execute(
-        """select prompt, filepath, id from prompt_queue where now() - inserted_ts < '1 hour'
-        order by map_len(reaction_map) desc, loss asc limit 1;"""
+        """select prompt, filepath, id from prompt_queue where now() - inserted_ts < '1 hour' and tweet_id is null
+        order by map_len(reaction_map) desc,(case when loss=-1.0 then 0.75 else loss end) asc limit 1;"""
     ).fetchone()
     logging.info(ret)
     if not ret:
         return None, None
     prompt, filepath, prompt_id = ret
+    prompt = Prompt(prompt,filepath,prompt_id)
+    # # if the filepath returns empty_prompt it might post an image that doesn't match the prompt. I wanted to skip them, but couldn't hack it
+    # if filepath == "empty_prompt.png":
+    #     conn.execute("update prompt_queue set tweet_id=empty_prompt where id=%s", prompt.prompt_id)
+    #     return get_prompt()
+
     slug = (
         filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
     )
-    prompt = Prompt(prompt,filepath,prompt_id)
     conn.close()
-    return prompt, view_url.format(slug=slug)
+    url = view_url.format(slug=slug)
+    return prompt, url
 
 
 def post_tweet(prompt: Prompt, url: str) -> None:
     "post tweet, either all at once for images or in chunks for videos"
     logging.info("uploading to twitter")
+    logging.info(f"Prompt: {prompt.prompt} \nFilepath: {prompt.filepath} \nURL:{url}")
     picture = requests.get(url).content
     media_resp = twitter_api.request(
         "media/upload", None, {"media": picture, "media_type": "image/png"}
@@ -104,6 +112,7 @@ def post_tweet(prompt: Prompt, url: str) -> None:
         tweet_resp = twitter_api.request("statuses/update", twitter_post)
         conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
         conn.execute("update prompt_queue set tweet_id=%s where id=%s", [tweet_resp.json()["id"], prompt.prompt_id])
+        conn.close()
     except KeyError:
         try:
             logging.error(media_resp.text)
