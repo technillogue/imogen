@@ -112,4 +112,4 @@ if __name__ == "__main__":
         prompt, view_url = get_prompt()
         if view_url and prompt:
             post_tweet(prompt, view_url)
-        time.sleep(60 * 60)
+        time.sleep(60 * int(utils.get_secret("MINUTES")) or 60)
