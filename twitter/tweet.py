@@ -34,26 +34,29 @@ class Prompt:
     "holds database result with prompt information"
     prompt: str
     filepath: str
+    prompt_id :str
 
 
 def get_prompt() -> tuple[Optional[str], Optional[str]]:
     """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.execute(
-        """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
+        """select prompt, filepath, id from prompt_queue where now() - inserted_ts < '1 hour'
         order by map_len(reaction_map) desc, loss asc limit 1;"""
     ).fetchone()
     logging.info(ret)
     if not ret:
         return None, None
-    prompt, filepath = ret
+    prompt, filepath, prompt_id = ret
     slug = (
         filepath.removeprefix("output/").removesuffix(".png").removesuffix("/progress")
     )
+    prompt = Prompt(prompt,filepath,prompt_id)
+    conn.close()
     return prompt, view_url.format(slug=slug)
 
 
-def post_tweet(prompt: str, url: str) -> None:
+def post_tweet(prompt: Prompt, url: str) -> None:
     "post tweet, either all at once for images or in chunks for videos"
     logging.info("uploading to twitter")
     picture = requests.get(url).content
@@ -95,10 +98,12 @@ def post_tweet(prompt: str, url: str) -> None:
         media = media_resp.json()
         media_id = media["media_id"]
         twitter_post = {
-            "status": prompt,
+            "status": prompt.prompt,
             "media_ids": media_id,
         }
-        twitter_api.request("statuses/update", twitter_post)
+        tweet_resp = twitter_api.request("statuses/update", twitter_post)
+        conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
+        conn.execute("update prompt_queue set tweet_id=%s where id=%s", [tweet_resp.json()["id"], prompt.prompt_id])
     except KeyError:
         try:
             logging.error(media_resp.text)
