@@ -1,3 +1,7 @@
+## 1.2.12.1
+
+- clean up dockerfile
+
 ## 1.2.12
 
 - ViT/L??
