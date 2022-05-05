@@ -1,3 +1,7 @@
+## 1.2.12
+
+- ViT/L??
+
 ## 1.2.11
 
 - feature flag for tweets
