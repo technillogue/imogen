@@ -90,6 +90,21 @@ async def validate() -> None:
 
     pdb.set_trace()
 
+# 100%|██████████████████████████████████████████████████████████████████████████████████| 500/500 [00:03<00:00, 136.18it/s]
+# 100%|███████████████████████████████████████████████████████████████████████████████████| 100/100 [00:03<00:00, 25.16it/s]
+# 0.5445
+# predicted: 0.7, actual 0. technocratic thinking
+# predicted: 0.45, actual 0. Julia made out of eggs
+# predicted: 0.4, actual 1. space transportation using chiaroscuro
+# predicted: 0.3, actual 1. derp
+# predicted: 0.15, actual 0. a vigilante duckman prancing
+# predicted: 0.15, actual 0. super Mario beating toadstool
+# predicted: 0.65, actual 0. traffic
+# predicted: 0.75, actual 0. Rapid eye movements in random access memories
+# predicted: 0.45, actual 0. a functioning web 3 startup
+# predicted: 0.4, actual 2. the wanderer cubist black and white with the words “wandering”
+
+
 
 async def main(text: str) -> None:
     prompts = await get_prompts(1000)
