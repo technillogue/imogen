@@ -11,6 +11,8 @@ torch = "*"
 clip = {git = "https://github.com/openai/CLIP.git", branch="main"}
 Pillow = "^9.1.0"
 numpy = "^1.22.3"
+torchvision = "^0.12.0"
+tqdm = "^4.64.0"
 
 [tool.poetry.dev-dependencies]
 
