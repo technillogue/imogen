@@ -31,12 +31,13 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
     writer = SummaryWriter()  # type: ignore
     opt = torch.optim.Adam(net.parameters(), lr=1e-3)
     loss_fn = nn.L1Loss()
-    epochs = 100
-    batch_size = 50
+    epochs = 10
+    batch_size = 1
     # 13000 / batch_size * epochs = 20k?
     prompts = prompts * epochs
     random.shuffle(prompts)
     batches = int(len(prompts) / batch_size)
+    losses = []
     for batch_index in range(batches):
         opt.zero_grad()
         batch = prompts[
@@ -46,11 +47,12 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         prediction = net(embeds)
         actual = torch.cat([Tensor([[float(bool(prompt.reacts))]]) for prompt in batch])
         loss = loss_fn(prediction, actual)
+        losses.append(float(loss))
         loss.backward()
         opt.step()
-        writer.add_scalar("loss/train", float(loss), batch_index)  # type: ignore
+        writer.add_scalar("loss/train", sum(losses)/len(losses), batch_index)  # type: ignore
         if (batch_index + 1) % 10  == 0:
-            print(f"batch {batch_index} loss: {float(loss)}")
+            print(f"batch {batch_index} loss: {sum(losses)/len(losses)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
     return net
@@ -85,7 +87,7 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # MSE: 0.2606
 # xavier init, L1
 # 0.42
-# use batch loss in indicators, tweaks
+# use running loss in indicators, tweaks
 # 0.44
 # iterate through data twice
 # 0.4265
@@ -107,6 +109,7 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # 0.4264
 # 100 epochs, batch 50, lr 1e-3
 # L1: 0.4379
+# 10 epochs, batch 1 (total average loss indicator)
 
 
 def main() -> None:
