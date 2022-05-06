@@ -207,6 +207,7 @@ def main() -> None:
                 )
                 logging.info("set done, poasting time: %s", time.time() - start_post)
                 backoff = 60
+                maybe_scale_in(conn)
             except Exception as e:  # pylint: disable=broad-except
                 logging.info("caught exception")
                 error_message = traceback.format_exc()
@@ -222,7 +223,6 @@ def main() -> None:
                 )
                 time.sleep(backoff)
                 backoff *= 1.5
-            maybe_scale_in(conn)
     finally:
         conn.close()
 
