@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from get_embeddings import Prompt
 
-device = "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def init_weights(m: nn.Module) -> None:
@@ -26,13 +26,14 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         nn.ReLU(),
         nn.Linear(256, 1),
         nn.Dropout(p=0.1),
+        nn.Sigmoid(),
     ).to(device)
     net.apply(init_weights)
     writer = SummaryWriter()  # type: ignore
-    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
-    epochs = 10
-    batch_size = 1
+    epochs = 100
+    batch_size = 50
     # 13000 / batch_size * epochs = 20k?
     prompts = prompts * epochs
     random.shuffle(prompts)
@@ -45,13 +46,15 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         ]
         embeds = torch.cat([prompt.embed.reshape([1, 512]) for prompt in batch])
         prediction = net(embeds)
-        actual = torch.cat([Tensor([[float(bool(prompt.reacts))]]) for prompt in batch])
+        actual = torch.cat(
+            [Tensor([[float(bool(prompt.reacts))]]) for prompt in batch]
+        ).to(device)
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
         loss.backward()
         opt.step()
-        writer.add_scalar("loss/train", sum(losses)/len(losses), batch_index)  # type: ignore
-        if (batch_index + 1) % 10  == 0:
+        writer.add_scalar("loss/train", sum(losses) / len(losses), batch_index)  # type: ignore
+        if (batch_index + 1) % 100 == 0:
             print(f"batch {batch_index} loss: {sum(losses)/len(losses)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
@@ -60,13 +63,13 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
 
 def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
     if not net:
-        net = torch.load("reaction_predictor.pth")  # type: ignore
+        net = torch.load("reaction_predictor.pth").to(device)  # type: ignore
     assert net
     loss_fn = nn.L1Loss()
     losses = []
     for i, prompt in enumerate(prompts):
         prediction = net(prompt.embed)
-        actual = Tensor([float(bool(prompt.reacts))])
+        actual = Tensor([float(bool(prompt.reacts))]).to(device)
         if i < 20:
             print(
                 f"predicted: {round(float(prediction), 4)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
@@ -110,6 +113,15 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # 100 epochs, batch 50, lr 1e-3
 # L1: 0.4379
 # 10 epochs, batch 1 (total average loss indicator)
+# train: 0.36 L1: 0.4195
+# add ReLU at the end, 20 epochs, batch 10
+# >0.5
+# 2 epochs, batch 1
+# 0.4873
+# sigmoid at the end, epochs = 10, batch = 10, lr 1e-4
+# train 0.3551838362793262, validation 0.4069
+# epochs = 100, batch = 50
+# train 0.1826724065951373, 0.4225
 
 
 def main() -> None:
@@ -117,7 +129,7 @@ def main() -> None:
     train_set = []
     valid_set = []
     for i, prompt in enumerate(prompts):
-        prompt.embed = prompt.embed.reshape([512])
+        prompt.embed = prompt.embed.reshape([512]).to(device)
         if i % 10 < 8:
             train_set.append(prompt)
         else:

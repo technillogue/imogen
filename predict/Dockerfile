@@ -13,7 +13,7 @@ COPY ./reaction_predictor.pth /
 FROM ubuntu:hirsute
 WORKDIR /app
 RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y python3
-COPY --from=model ./reaction_predictor.pth /app/reaction_predictor
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
+COPY --from=model ./reaction_predictor.pth /app/reaction_predictor
 COPY ./server.py ./get_embeddings.py /app/ 
 ENTRYPOINT ["/usr/bin/python3", "/app/server.py"]

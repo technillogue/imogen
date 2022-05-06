@@ -80,10 +80,15 @@ def pick_best(prompts: list[Prompt]) -> list[Prompt]:
     "pick the most reacted prompt from prompts with the same text"
     groups = defaultdict(list)
     for prompt in prompts:
-        groups[prompt.prompt].append(prompt)
+        if (
+            any(c.isalpha() for c in prompt.prompt)
+            and "/imagine" not in prompt.prompt
+            and "in line" in prompt.prompt
+        ):
+            groups[prompt.prompt].append(prompt)
     bests: list[Prompt] = []
     for group in groups.values():
-        bests.append(max(group, key=lambda prompt:prompt.reacts))
+        bests.append(max(group, key=lambda prompt: prompt.reacts))
     return bests
 
 
