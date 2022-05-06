@@ -1,18 +1,9 @@
 import dataclasses
 import random
-import torch as T
-import tqdm
 import torch
+import tqdm
 from torch import Tensor, nn
-
-
-@dataclasses.dataclass
-class Prompt:
-    prompt: str
-    reacts: int
-    loss: float
-    embed: Tensor
-
+from get_embeddings import Prompt
 
 device = "cpu"
 
@@ -30,15 +21,15 @@ net = nn.Sequential(
 ).to(device)
 
 
-def train():
-    prompts = torch.load("prompts.pth")  # 11k prompts
+def train() -> None:
+    prompts = torch.load("prompts.pth")  # type: ignore # 13k prompts
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
-    loss_fn = T.nn.MSELoss()
+    loss_fn = nn.MSELoss()
     progress_bar = tqdm.tqdm(enumerate(prompts[: int(len(prompts) * 0.8)]))
     for i, prompt in progress_bar:
         opt.zero_grad()
         prediction = net(prompt.embed)
-        actual = T.Tensor([[[float(bool(prompt.reacts))]]])
+        actual = Tensor([[[float(bool(prompt.reacts))]]])
         loss = loss_fn(prediction, actual)
         loss.backward()
         opt.step()
@@ -48,16 +39,16 @@ def train():
     torch.save(net, "reaction_predictor.pth")
 
 
-def validate():
-    net = torch.load("reaction_predictor.pth")
-    prompts = torch.load("prompts.pth")
-    test = list(prompts[-int(len(prompts) * 0.8):])
+def validate() -> None:
+    net = torch.load("reaction_predictor.pth")  # type: ignore
+    prompts = torch.load("prompts.pth")  # type: ignore
+    test = list(prompts[-int(len(prompts) * 0.8) :])
     random.shuffle(test)
-    loss_fn = T.nn.MSELoss()
+    loss_fn = nn.MSELoss()
     losses = []
     for i, prompt in enumerate(test):
         prediction = net(prompt.embed)
-        actual = T.Tensor([[[float(bool(prompt.reacts))]]])
+        actual = Tensor([[[float(bool(prompt.reacts))]]])
         if i < 20:
             print(
                 f"predicted: {round(float(prediction), 4)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
@@ -72,7 +63,7 @@ def validate():
 # ~0.25
 # full 13k
 # MSE: 0.2588944340470567
-# oops was validating with training set 
+# oops was validating with training set
 # switch to 512-512-512-256-1
 # MSE: 0.2626
 # MSE: 0.2606

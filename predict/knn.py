@@ -1,6 +1,4 @@
 import asyncio
-from collections import defaultdict
-import dataclasses
 import os
 import random
 import sys
@@ -8,94 +6,8 @@ from typing import Any, Callable, cast
 import asyncpg
 import torch
 import tqdm
-from clip import clip
 from torch import Tensor
-from torch.nn import functional as F
-
-device = "cpu"
-percep = clip.load("ViT-B/32", jit=False)[0].to(device)
-percep.eval()
-
-
-def norm(embedding: Tensor) -> Tensor:
-    return F.normalize(embedding.unsqueeze(1), dim=2)
-
-
-def embed(text: str) -> Tensor:
-    return (
-        norm(percep.encode_text(clip.tokenize(text, truncate=True).to(device)))
-        .to("cpu")
-        .detach()
-    )
-
-
-@dataclasses.dataclass
-class Prompt:
-    prompt: str
-    reacts: int
-    loss: float
-    embed: Tensor
-
-
-async def get_prompts(n: int, skip: int = 0) -> list[Prompt]:
-    conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
-    prompts = []
-    # later: sample evenly from prompts with #n reactions
-    # ret = (
-    #     await conn.fetch(
-    #         """select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
-    #     where status='done' and group_id<>'' and id % 3 <> $2 and map_len(reaction_map) = 0 order by random() limit $1 """,
-    #         n // 2, skip
-    #     )
-    #     + await conn.fetch(
-    #         """select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
-    #     where status='done' and group_id<>'' and id % 3 <> $2 and map_len(reaction_map)<>0 order by random() limit $1 """,
-    #         n // 2, skip
-    #     )
-    # )
-    ret = await conn.fetch(
-        """select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
-        where status='done' and group_id<>'' """
-    )
-    await conn.close()
-    for record in tqdm.tqdm(ret):
-        try:
-            prompts.append(
-                Prompt(
-                    record["prompt"],
-                    record["reacts"],
-                    record["loss"],
-                    embed(record["prompt"]),
-                )
-            )
-        except RuntimeError:
-            break
-    torch.cuda.empty_cache()
-    return prompts
-
-
-def pick_best(prompts: list[Prompt]) -> list[Prompt]:
-    groups = defaultdict(list)
-    for prompt in prompts:
-        groups[prompt.prompt].append(prompt)
-    bests: list[Prompt] = []
-    for group in groups.values():
-        group[0].reacts = max(prompt.reacts for prompt in group)
-        bests.append(group[0])
-    return bests
-
-
-def balance(
-    prompts: list[Prompt], key: Callable = lambda prompt: bool(prompt.reacts)
-) -> list[Prompt]:
-    groups = defaultdict(list)
-    for prompt in prompts:
-        groups[key(prompt)].append(prompt)
-    cutoff = min(len(group) - 1 for group in groups.values())
-    together = [prompt for group in groups.values() for prompt in group[:cutoff]]
-    random.shuffle(together)
-    return together
-
+from get_embeddings import embed, Prompt
 
 def dist(embed1: Tensor, embed2: Tensor) -> float:
     return float(embed1.sub(embed2).norm(dim=2).div(2).arcsin().pow(2).mul(2))  # type: ignore
@@ -130,12 +42,12 @@ def mse(data: list[tuple[float, float]]) -> float:
 
 
 async def validate() -> None:
-    try:
-        untyped = torch.load("prompts.pth")  # type: ignore
-        train_lol = cast(list[Prompt], untyped)
-    except FileNotFoundError:
-        train_lol = await get_prompts(600)
-        torch.save(train_lol, "prompts.pth")
+    # try:
+    untyped = torch.load("prompts.pth")  # type: ignore
+    train_lol = cast(list[Prompt], untyped)
+    # except FileNotFoundError:
+    #     train_lol = await get_prompts(600)
+    #     torch.save(train_lol, "prompts.pth")
     conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
     test = (
         await conn.fetch(
@@ -189,19 +101,13 @@ async def validate() -> None:
 
 
 async def main(text: str) -> None:
-    prompts = await get_prompts(1000)
-    torch.save(prompts, "prompts.pth")
+    prompts = torch.load("prompts.pth") # type: ignore  # await get_prompts(1000)
+    # torch.save(prompts, "prompts.pth")
     results = knn(text or " ".join(sys.argv[1:]), prompts)
     for result in results:
         print(f"{result.prompt}: {result.reacts}")
     print("average: ", sum(r.reacts for r in results) / len(results))
 
 
-async def prepare() -> None:
-    prompts = balance(pick_best(await get_prompts(-1)))
-    print(len(prompts))
-    torch.save(prompts, "prompts.pth")
-
-
 if __name__ == "__main__":
-    asyncio.run(prepare())
+    asyncio.run(validate())
