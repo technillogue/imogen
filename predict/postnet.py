@@ -24,7 +24,7 @@ net = nn.Sequential(
 def train() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore # 13k prompts
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
     progress_bar = tqdm.tqdm(enumerate(prompts[: int(len(prompts) * 0.8)]))
     for i, prompt in progress_bar:
         opt.zero_grad()
@@ -44,7 +44,7 @@ def validate() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
     test = list(prompts[-int(len(prompts) * 0.8) :])
     random.shuffle(test)
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
     losses = []
     for i, prompt in enumerate(test):
         prediction = net(prompt.embed)
