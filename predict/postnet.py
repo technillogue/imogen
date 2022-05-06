@@ -1,4 +1,5 @@
 import dataclasses
+import random
 import torch as T
 import tqdm
 import torch
@@ -48,20 +49,30 @@ def train():
 def validate():
     net = torch.load("reaction_predictor.pth")
     prompts = torch.load("prompts.pth")
+    test = list(prompts[-int(len(prompts) * 0.8):])
+    random.shuffle(test)
     loss_fn = T.nn.MSELoss()
     losses = []
-    for i, prompt in tqdm.tqdm(enumerate(prompts[int(len(prompts) * 0.2) :])):
+    for i, prompt in enumerate(test):
         prediction = net(prompt.embed)
         actual = T.Tensor([[[float(bool(prompt.reacts))]]])
         if i < 20:
             print(
-                f"predicted: {float(prediction)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
+                f"predicted: {round(float(prediction), 4)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
             )
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
-    print(f"MSE: {sum(losses) / len(losses)}")
+    print(f"MSE: {round(sum(losses) / len(losses), 4)}")
 
 
 # MSE: 0.49840676848697946
+# switch to 256
+# ~0.25
+# full 13k
+# MSE: 0.2588944340470567
+# oops was validating with training set 
+# switch to 512-512-512-256-1
+# MSE: 0.2626
+# 
 train()
 validate()
