@@ -58,14 +58,15 @@ def validate() -> None:
     print(f"MSE: {round(sum(losses) / len(losses), 4)}")
 
 
+
 # MSE: 0.49840676848697946
-# switch to 256
+# switch to 512-256-256-1
 # ~0.25
-# full 13k
+# use full 13k over 11k
 # MSE: 0.2588944340470567
 # oops was validating with training set
-# switch to 512-512-512-256-1
 # MSE: 0.2626
+# switch to 512-512-512-256-1
 # MSE: 0.2606
 train()
 validate()
