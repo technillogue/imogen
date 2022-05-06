@@ -8,8 +8,9 @@ authors = ["technillogue <technillogue@gmail.com>"]
 python = "^3.9"
 aiohttp = {extras = ["speedups"], version = "^3.8.1"}
 torch = "*"
-PIL = "*"
 clip = {git = "https://github.com/openai/CLIP.git", branch="main"}
+Pillow = "^9.1.0"
+numpy = "^1.22.3"
 
 [tool.poetry.dev-dependencies]
 

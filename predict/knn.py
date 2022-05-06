@@ -40,6 +40,8 @@ def weighted_knn(
 def mse(data: list[tuple[float, float]]) -> float:
     return sum((pred - actual) ** 2 for pred, actual in data) / len(data)
 
+def mae(data: list[tuple[float, float]]) -> float:
+    return sum(abs(pred - actual)for pred, actual in data) / len(data)
 
 async def validate() -> None:
     # try:
@@ -72,7 +74,7 @@ async def validate() -> None:
                 float(bool(row["reacts"])),
             )
         )
-    print(mse(data))
+    print(mae(data))
     for i in range(10):
         print(f"predicted: {data[i][0]}, actual {data[i][1]}. {test[i]['prompt']}")
     import pdb
@@ -99,6 +101,8 @@ async def validate() -> None:
 # unbalanced: 0.20
 # top20, weighted, balanced, bool: 0.255
 
+# whole prompt set (validation likely in training set), MAE
+# 0.46642516746930807
 
 async def main(text: str) -> None:
     prompts = torch.load("prompts.pth") # type: ignore  # await get_prompts(1000)
