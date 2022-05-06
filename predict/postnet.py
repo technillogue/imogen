@@ -17,11 +17,13 @@ class Prompt:
 device = "cpu"
 
 net = nn.Sequential(
+    nn.Linear(512, 512),
+    nn.ReLU(),
+    nn.Linear(512, 512),
+    nn.ReLU(),
+    nn.Linear(512, 512),
+    nn.ReLU(),
     nn.Linear(512, 256),
-    nn.ReLU(),
-    nn.Linear(256, 256),
-    nn.ReLU(),
-    nn.Linear(256, 256),
     nn.ReLU(),
     nn.Linear(256, 1),
     nn.Dropout(p=0.1),
@@ -73,6 +75,6 @@ def validate():
 # oops was validating with training set 
 # switch to 512-512-512-256-1
 # MSE: 0.2626
-# 
+# MSE: 0.2606
 train()
 validate()
