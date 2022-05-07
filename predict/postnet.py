@@ -1,15 +1,19 @@
 import random
 from typing import Optional
 import torch
+import tqdm
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
+from clip import clip
 from core import Prompt
+from torch.cuda.amp import autocast
 
-device = "cpu" #"cuda:0" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def init_weights(m: nn.Module) -> None:
     if isinstance(m, nn.Linear):
+        # m.half()
         # aka Glorot
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
@@ -33,7 +37,6 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
     loss_fn = nn.L1Loss()
     epochs = 10
     batch_size = 10
-    # 13000 / batch_size * epochs = 20k?
     prompts = prompts * epochs
     random.shuffle(prompts)
     batches = int(len(prompts) / batch_size)
@@ -43,7 +46,7 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         batch = prompts[
             batch_index * batch_size : batch_index * batch_size + batch_size
         ]
-        embeds = torch.cat([prompt.embed.reshape([1, 512]) for prompt in batch])
+        embeds = torch.cat([prompt.embed for prompt in batch])
         prediction = net(embeds)
         actual = torch.cat(
             [Tensor([[float(bool(prompt.reacts))]]) for prompt in batch]
@@ -54,7 +57,7 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         opt.step()
         writer.add_scalar("loss/train", sum(losses) / len(losses), batch_index)  # type: ignore
         if (batch_index + 1) % 100 == 0:
-            print(f"batch {batch_index} loss: {sum(losses)/len(losses)}")
+            print(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
     return net
@@ -66,6 +69,7 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
     assert net
     loss_fn = nn.L1Loss()
     losses = []
+    print(prompts[0].embed.size)
     for i, prompt in enumerate(prompts):
         prediction = net(prompt.embed)
         actual = Tensor([float(bool(prompt.reacts))]).to(device)
@@ -129,14 +133,14 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # loss: 0.37430778, L1: 0.4145
 # epochs = 10, batch = 10, lr=1e-4
 # loss: 0.357416698303858, L1: 0.4058
-
-
+# after refactor, excluding prompts that were never sent and prompts with "/imagine" or "in line"
+# train 0.330879863, test 0.3921
 def main() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
     train_set = []
     valid_set = []
     for i, prompt in enumerate(prompts):
-        prompt.embed = prompt.embed.to(device)
+        prompt.embed = prompt.embed.to(device).to(torch.float32)
         if i % 10 < 8:
             train_set.append(prompt)
         else:
@@ -145,6 +149,11 @@ def main() -> None:
     net = train(list(train_set))
     validate(list(valid_set), net)
 
+def train_prod() -> None:
+    prompts = torch.load("prompts.pth")  # type: ignore
+    for prompt in prompts:
+        prompt.embed = prompt.embed.to(device).to(torch.float32)
+    net = train(prompts)
 
 if __name__ == "__main__":
-    main()
+    train_prod()

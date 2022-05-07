@@ -93,6 +93,8 @@ async def prepare() -> None:
     print("embedded: ", len(prompts))
     torch.save(prompts, "prompts.pth")
 
+async def prepare_basic() -> None:
+    torch.save(balance(pick_best(await get_all_rows())), "basic_prompts.pth")
 
 if __name__ == "__main__":
-    asyncio.run(prepare())
+    asyncio.run(prepare_basic())
