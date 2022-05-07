@@ -13,7 +13,6 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 def init_weights(m: nn.Module) -> None:
     if isinstance(m, nn.Linear):
         # aka Glorot
-        m.half()
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
 
@@ -21,15 +20,24 @@ def init_weights(m: nn.Module) -> None:
 class MyClip(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.perceptor = clip.load("ViT-B/32", jit=False)[0]
+        self.pront = True
+        self.perceptor = clip.load("ViT-B/32", jit=False, device=device)[0]
+        self.perceptor.eval()
 
     def forward(self, tokens: Tensor) -> Tensor:
-        return nn.functional.normalize(self.perceptor.encode_text(tokens), dim=1)
+        encoded = self.perceptor.encode_text(tokens)
+        normed = nn.functional.normalize(encoded, dim=1)
+        if self.pront:
+            print(encoded)
+            print(normed)
+            self.pront = False
+        return normed 
 
 
 class GoodPostNetwork(nn.Module):
     def __init__(self) -> None:
         super().__init__()
+        self.pront = True
         self.net = nn.Sequential(
             nn.Linear(512, 512),
             nn.ReLU(),
@@ -44,37 +52,49 @@ class GoodPostNetwork(nn.Module):
         self.net.apply(init_weights)
         self.perceptor = MyClip()
 
-    # @autocast()
     def forward(self, tokens: Tensor) -> Tensor:
-        return self.net(self.perceptor(tokens))
+        embed = self.perceptor(tokens)
+        prediction = self.net(embed)
+        if self.pront:
+            print(embed)
+            print(prediction)
+            self.pront = False
+        return prediction
 
 
 def train_with_clip(prompts: list[Prompt]) -> nn.Sequential:
     writer = SummaryWriter()  # type: ignore
     for prompt in prompts:
         prompt.tokens = clip.tokenize(prompt.prompt, truncate=True).to(device)
+    print("tokenized prompts")
     net = GoodPostNetwork()
+    print("net instanciated")
+    scaler = torch.cuda.amp.GradScaler()
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
     epochs = 10
     batch_size = 10
-    # 13000 / batch_size * epochs = 20k?
     prompts = prompts * epochs
     random.shuffle(prompts)
-    batches = int(len(prompts) / batch_size)
+    batch_count = int(len(prompts) / batch_size)
     losses = []
-    for batch_index in range(batches):
+    print("starting training")
+    for batch_index in range(batch_count):
         opt.zero_grad()
         batch = prompts[
             batch_index * batch_size : batch_index * batch_size + batch_size
         ]
         tokens = torch.cat([prompt.tokens for prompt in batch])
-        prediction = net(tokens)
-        actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
-        loss = loss_fn(prediction, actual)
-        losses.append(float(loss))
-        loss.backward()
-        opt.step()
+        with torch.cuda.amp.autocast():
+            prediction = net(tokens)
+            assert prediction.dtype == torch.float16
+            actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
+            loss = loss_fn(prediction, actual)
+            assert loss.dtype == torch.float32
+            losses.append(float(loss))
+        scaler.scale(loss).backward()
+        scaler.step(opt) # ValueError: Attempting to unscale FP16 gradients.
+        scaler.update()
         writer.add_scalar("loss/train", sum(losses) / len(losses), batch_index)  # type: ignore
         if (batch_index + 1) % 100 == 0:
             print(f"batch {batch_index} loss: {sum(losses)/len(losses)}")
@@ -92,10 +112,10 @@ def validate_with_toks(prompts: list[Prompt], net: Optional[nn.Module] = None) -
     for i, prompt in enumerate(prompts):
         tokens = clip.tokenize(prompt.prompt, truncate=True).to(device)
         prediction = net(tokens)
-        actual = Tensor([float(bool(prompt.reacts))]).to(device)
+        actual = Tensor([prompt.label]).to(device)
         if i < 20:
             print(
-                f"predicted: {round(float(prediction), 4)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
+                f"predicted: {round(float(prediction), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
             )
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
@@ -107,7 +127,6 @@ def main() -> None:
     train_set = []
     valid_set = []
     for i, prompt in enumerate(prompts):
-        # prompt.embed = prompt.embed.to(device)
         if i % 10 < 8:
             train_set.append(prompt)
         else:
