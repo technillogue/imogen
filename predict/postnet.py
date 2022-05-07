@@ -1,17 +1,16 @@
-from typing import Optional
 import random
+from typing import Optional
 import torch
-import tqdm
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
-
-from get_embeddings import Prompt
+from core import Prompt
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def init_weights(m: nn.Module) -> None:
     if isinstance(m, nn.Linear):
+        # aka Glorot
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
 
@@ -137,7 +136,7 @@ def main() -> None:
     train_set = []
     valid_set = []
     for i, prompt in enumerate(prompts):
-        prompt.embed = prompt.embed.reshape([512]).to(device)
+        prompt.embed = prompt.embed.to(device)
         if i % 10 < 8:
             train_set.append(prompt)
         else:

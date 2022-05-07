@@ -1,27 +1,20 @@
-import asyncio
-import os
 import random
-import sys
-from typing import Any, Callable, cast
-import asyncpg
+
 import torch
 import tqdm
 from torch import Tensor
-from get_embeddings import embed, Prompt
+from core import Prompt
+
 
 def dist(embed1: Tensor, embed2: Tensor) -> float:
     return float(embed1.sub(embed2).norm(dim=2).div(2).arcsin().pow(2).mul(2))  # type: ignore
 
 
-def knn(search_text: str, prompts: list[Prompt], k: int = 10) -> list[Prompt]:
-    search_embed = embed(search_text)
-    return sorted(prompts, key=lambda p: float(dist(p.embed, search_embed)))[:k]
+def knn(search_embed: Tensor, prompts: list[Prompt], k: int = 10) -> list[Prompt]:
+    return sorted(prompts, key=lambda p: dist(p.embed, search_embed))[:k]
 
 
-def weighted_knn(
-    search_text: str, prompts: list[Prompt], k: int = 30, fn: Callable = bool
-) -> Any:
-    search_embed = embed(search_text)
+def weighted_knn(search_embed: Tensor, prompts: list[Prompt], k: int = 30) -> float:
     distances = sorted(
         [
             [distance, prompt.reacts]
@@ -32,7 +25,7 @@ def weighted_knn(
     )
     total_weights = sum(1.0 / dist for dist, _ in distances[:k])
     return (
-        sum([fn(reacts) * (1.0 / dist) for dist, reacts in distances[:k]])
+        sum([bool(reacts) * (1.0 / dist) for dist, reacts in distances[:k]])
         / total_weights
     )
 
@@ -40,46 +33,28 @@ def weighted_knn(
 def mse(data: list[tuple[float, float]]) -> float:
     return sum((pred - actual) ** 2 for pred, actual in data) / len(data)
 
-def mae(data: list[tuple[float, float]]) -> float:
-    return sum(abs(pred - actual)for pred, actual in data) / len(data)
 
-async def validate() -> None:
-    # try:
-    untyped = torch.load("prompts.pth")  # type: ignore
-    train_lol = cast(list[Prompt], untyped)
-    # except FileNotFoundError:
-    #     train_lol = await get_prompts(600)
-    #     torch.save(train_lol, "prompts.pth")
-    conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
-    test = (
-        await conn.fetch(
-            """select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
-        where status='done' and group_id<>'' and id % 3 = 0 and map_len(reaction_map) = 0 order by random() limit 50"""
-        )
-        + await conn.fetch(
-            """select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
-        where status='done' and group_id<>'' and id % 3 = 0
-        and map_len(reaction_map) <> 0 order by random() limit 50"""
-        )
-    )
-    random.shuffle(test)
-    await conn.close()
-    data = []
+def mae(data: list[tuple[float, float]]) -> float:
+    return sum(abs(pred - actual) for pred, actual in data) / len(data)
+
+
+def validate(prompts: list[Prompt]) -> None:
+    search_space, search_keys = [], []
+    for i, prompt in enumerate(prompts[:10000]):
+        if i % 100 < 95:
+            search_space.append(prompt)
+        else:
+            search_keys.append(prompt)
+    random.shuffle(search_keys)
     k = 20
-    for row in tqdm.tqdm(test):
-        data.append(
-            (
-                weighted_knn(row["prompt"], train_lol, k),
-                # (sum(bool(p.reacts) for p in knn(row["prompt"], train_lol, k)) / float(k)),
-                float(bool(row["reacts"])),
-            )
-        )
+    data = [
+        (weighted_knn(prompt.embed, search_space, k), prompt.label)
+        for prompt in tqdm.tqdm(search_keys)
+    ]
+    # (sum(bool(p.reacts) for p in knn(prompt.embed, search_space, k)) / float(k)),
     print(mae(data))
     for i in range(10):
-        print(f"predicted: {data[i][0]}, actual {data[i][1]}. {test[i]['prompt']}")
-    import pdb
-
-    pdb.set_trace()
+        print(f"predicted: {data[i][0]}, actual {data[i][1]}. {search_keys[i].prompt}")
 
 
 # 100%|██████████████████████████████████████████████████████████████████████████████████| 500/500 [00:03<00:00, 136.18it/s]
@@ -104,14 +79,5 @@ async def validate() -> None:
 # whole prompt set (validation likely in training set), MAE
 # 0.46642516746930807
 
-async def main(text: str) -> None:
-    prompts = torch.load("prompts.pth") # type: ignore  # await get_prompts(1000)
-    # torch.save(prompts, "prompts.pth")
-    results = knn(text or " ".join(sys.argv[1:]), prompts)
-    for result in results:
-        print(f"{result.prompt}: {result.reacts}")
-    print("average: ", sum(r.reacts for r in results) / len(results))
-
-
 if __name__ == "__main__":
-    asyncio.run(validate())
+    validate(torch.load("prompts.pth"))  # type: ignore
