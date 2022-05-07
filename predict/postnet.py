@@ -5,7 +5,7 @@ from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 from core import Prompt
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+device = "cpu" #"cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def init_weights(m: nn.Module) -> None:

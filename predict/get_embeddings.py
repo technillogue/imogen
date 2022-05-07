@@ -43,9 +43,9 @@ async def get_all_rows() -> list[BasicPrompt]:
 
 
 def pick_best(prompts: list[BasicPrompt]) -> list[BasicPrompt]:
-    "pick the most reacted prompt from prompts with the same text"
+    "pick the most reacted prompt from prompts with the same acceptable text"
     groups = defaultdict(list)
-    print(f"pick best input", len(prompts))
+    # this group by is a bit redundant with the grouping in postgres so it's just filtering
     for prompt in prompts:
         if (
             any(c.isalpha() for c in prompt.prompt)
@@ -74,11 +74,9 @@ def balance(
 
 def embed_all(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Prompt]:
     embedded_prompts: list[Prompt] = []
-    print(len(prompts))
-    pbar = tqdm.tqdm(prompts, total=len(prompts))
-    for prompt in pbar:
-        embedding = embed(perceptor, prompt.prompt).to("cpu")
-        prompts.append(Prompt(prompt.prompt, prompt.reacts, prompt.loss, embedding))
+    for prompt in tqdm.tqdm(prompts):
+        embedding = embed(perceptor, prompt.prompt).to("cpu").detach()
+        embedded_prompts.append(Prompt(prompt.prompt, prompt.reacts, prompt.loss, embedding))
     torch.cuda.empty_cache()
     return embedded_prompts
 
@@ -92,7 +90,7 @@ async def prepare() -> None:
     perceptor = clip.load("ViT-B/32", jit=False)[0]
     perceptor.eval()
     prompts = embed_all(perceptor, kept_basic_prompts)
-    print(len(prompts))
+    print("embedded: ", len(prompts))
     torch.save(prompts, "prompts.pth")
 
 
