@@ -32,8 +32,8 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
     writer = SummaryWriter()  # type: ignore
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
-    epochs = 100
-    batch_size = 50
+    epochs = 10
+    batch_size = 10
     # 13000 / batch_size * epochs = 20k?
     prompts = prompts * epochs
     random.shuffle(prompts)
@@ -122,6 +122,14 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # train 0.3551838362793262, validation 0.4069
 # epochs = 100, batch = 50
 # train 0.1826724065951373, 0.4225
+# epochs = 2, batch = 1
+# 0.439893, 0.4249
+# epochs = 100, batch = 50, lr = 1e-5
+# 0.374307, 0.4145
+# epochs = 20, batch = 10 lr=1e-4
+# loss: 0.37430778, L1: 0.4145
+# epochs = 10, batch = 10, lr=1e-4
+# loss: 0.357416698303858, L1: 0.4058
 
 
 def main() -> None:

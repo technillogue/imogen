@@ -4,7 +4,8 @@ from aiohttp import web
 
 from clip import clip
 
-net = torch.load("reaction_predictor")  # type: ignore
+device = "cpu"
+net = torch.load("reaction_predictor", map_location=device)  # type: ignore
 app = web.Application()
 
 percep = clip.load("ViT-B/32", jit=False)[0]
