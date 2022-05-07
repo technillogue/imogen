@@ -7,7 +7,7 @@ from core import Prompt
 
 
 def dist(embed1: Tensor, embed2: Tensor) -> float:
-    return float(embed1.sub(embed2).norm(dim=2).div(2).arcsin().pow(2).mul(2))  # type: ignore
+    return float(embed1.sub(embed2).norm(dim=1).div(2).arcsin().pow(2).mul(2))  # type: ignore
 
 
 def knn(search_embed: Tensor, prompts: list[Prompt], k: int = 10) -> list[Prompt]:
@@ -41,6 +41,7 @@ def mae(data: list[tuple[float, float]]) -> float:
 def validate(prompts: list[Prompt]) -> None:
     search_space, search_keys = [], []
     for i, prompt in enumerate(prompts[:10000]):
+        prompt.embed = prompt.embed.to(torch.float32)
         if i % 100 < 95:
             search_space.append(prompt)
         else:
