@@ -1,8 +1,11 @@
+import logging
 import torch
 from torch.nn import functional as F
 from aiohttp import web
 
 from clip import clip
+
+logging.getLogger().setLevel("DEBUG")
 
 device = "cpu"
 net = torch.load("reaction_predictor", map_location=device)  # type: ignore
