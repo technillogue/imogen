@@ -23,6 +23,7 @@ class MyClip(nn.Module):
         self.pront = True
         self.perceptor = clip.load("ViT-B/32", jit=False, device=device)[0]
         self.perceptor.eval()
+        self.perceptor.float()
 
     def forward(self, tokens: Tensor) -> Tensor:
         encoded = self.perceptor.encode_text(tokens)
@@ -69,11 +70,11 @@ def train_with_clip(prompts: list[Prompt]) -> nn.Sequential:
     print("tokenized prompts")
     net = GoodPostNetwork()
     print("net instanciated")
-    scaler = torch.cuda.amp.GradScaler()
-    opt = torch.optim.Adam(net.parameters(), lr=1e-4)
+    scaler = torch.cuda.amp.GradScaler(enabled=False)
+    opt = torch.optim.Adam(net.parameters(), lr=1e-5)
     loss_fn = nn.L1Loss()
     epochs = 10
-    batch_size = 10
+    batch_size = 5
     prompts = prompts * epochs
     random.shuffle(prompts)
     batch_count = int(len(prompts) / batch_size)
@@ -85,12 +86,10 @@ def train_with_clip(prompts: list[Prompt]) -> nn.Sequential:
             batch_index * batch_size : batch_index * batch_size + batch_size
         ]
         tokens = torch.cat([prompt.tokens for prompt in batch])
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast(enabled=False):
             prediction = net(tokens)
-            assert prediction.dtype == torch.float16
             actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
             loss = loss_fn(prediction, actual)
-            assert loss.dtype == torch.float32
             losses.append(float(loss))
         scaler.scale(loss).backward()
         scaler.step(opt) # ValueError: Attempting to unscale FP16 gradients.
@@ -120,6 +119,12 @@ def validate_with_toks(prompts: list[Prompt], net: Optional[nn.Module] = None) -
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
     print(f"L1: {round(sum(losses) / len(losses), 4)}")
+
+# lr 1e-4 batch=10 epoch=10
+# train 0.4976, test: 0.494
+# lr 5e-5 batch=100 epochs=100
+# train 0.4997, test 0.4938. seems to predict 0 or 0.5 for everything
+
 
 
 def main() -> None:
