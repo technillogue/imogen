@@ -7,7 +7,7 @@ import asyncpg
 import torch
 import tqdm
 from clip import clip, model
-from core import BasicPrompt, Prompt, embed
+from core import BasicPrompt, TokenPrompt, Prompt, embed
 
 
 async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
@@ -30,10 +30,9 @@ async def get_all_rows() -> list[BasicPrompt]:
     "just get every prompt"
     conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
     ret = await conn.fetch(
-        """
-        select prompt, max(map_len(reaction_map)) as reacts,
+        """ select prompt, max(map_len(reaction_map)) as reacts,
         min(loss) as loss from prompt_queue
-        where sent_ts is not null and group_id<>''
+        where sent_ts is not null and status='done' and group_id<>''
         group by prompt;
         """
     )
@@ -64,6 +63,7 @@ def balance(
 ) -> list[BasicPrompt]:
     "shuffle together equal amounts of each group. default to equal amounts of prompts with and without reactions"
     groups = defaultdict(list)
+    random.shuffle(prompts)  # make sure the within-group ordering is random
     for prompt in prompts:
         groups[key(prompt)].append(prompt)
     cutoff = min(len(group) - 1 for group in groups.values())
@@ -76,9 +76,24 @@ def embed_all(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Prompt]
     embedded_prompts: list[Prompt] = []
     for prompt in tqdm.tqdm(prompts):
         embedding = embed(perceptor, prompt.prompt).to("cpu").detach()
-        embedded_prompts.append(Prompt(prompt.prompt, prompt.reacts, prompt.loss, embedding))
+        embedded_prompts.append(
+            Prompt(prompt.prompt, prompt.reacts, prompt.loss, embedding)
+        )
     torch.cuda.empty_cache()
     return embedded_prompts
+
+
+def tokenize_all(prompts: list[BasicPrompt]) -> list[TokenPrompt]:
+    # cheating a bit
+    return [
+        TokenPrompt(
+            prompt.prompt,
+            prompt.reacts,
+            prompt.loss,
+            clip.tokenize(prompt.prompt, truncate=True),
+        )
+        for prompt in tqdm.tqdm(prompts)
+    ]
 
 
 async def prepare() -> None:
@@ -93,8 +108,16 @@ async def prepare() -> None:
     print("embedded: ", len(prompts))
     torch.save(prompts, "prompts.pth")
 
+
 async def prepare_basic() -> None:
     torch.save(balance(pick_best(await get_all_rows())), "basic_prompts.pth")
 
+
+async def prepare_token() -> None:
+    torch.save(
+        tokenize_all(balance(pick_best(await get_all_rows()))), "token_prompts.pth"
+    )
+
+
 if __name__ == "__main__":
-    asyncio.run(prepare_basic())
+    asyncio.run(prepare_token())

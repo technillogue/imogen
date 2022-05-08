@@ -20,28 +20,32 @@ def init_weights(m: nn.Module) -> None:
 
 
 def train(prompts: list[Prompt]) -> nn.Sequential:
+    writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
     net = nn.Sequential(
-        nn.Linear(512, 512),
+        nn.Linear(512, 512),  # fc1
         nn.ReLU(),
-        nn.Linear(512, 512),
+        nn.LayerNorm(512),
+        nn.Linear(512, 512),  # fc2
         nn.ReLU(),
-        nn.Linear(512, 256),
+        nn.Linear(512, 256),  # fc3_256
         nn.ReLU(),
         nn.Dropout(p=0.1),
-        nn.Linear(256, 1),
+        nn.Linear(256, 1),  # fc4_1
         nn.Sigmoid(),
     ).to(device)
     net.apply(init_weights)
-    writer = SummaryWriter()  # type: ignore
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
     epochs = 10
     batch_size = 10
+    for prompt in prompts:
+        prompt.embed = prompt.embed.to(device).to(torch.float32)
     prompts = prompts * epochs
     random.shuffle(prompts)
     batches = int(len(prompts) / batch_size)
     losses = []
-    for batch_index in range(batches):
+    pbar = tqdm.trange(batches)
+    for batch_index in pbar:
         opt.zero_grad()
         batch = prompts[
             batch_index * batch_size : batch_index * batch_size + batch_size
@@ -57,7 +61,7 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         opt.step()
         writer.add_scalar("loss/train", sum(losses) / len(losses), batch_index)  # type: ignore
         if (batch_index + 1) % 100 == 0:
-            print(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
+            pbar.write(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
     print("train loss: ", round(sum(losses) / len(losses), 4))
@@ -72,10 +76,8 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
     losses = []
     messages = []
     for i, prompt in enumerate(prompts):
-        prediction = net(prompt.embed)
-        actual = (
-            Tensor([float(bool(prompt.reacts))]).reshape(prediction.shape).to(device)
-        )
+        prediction = net(prompt.embed.to(device).to(torch.float32)).to("cpu")
+        actual = Tensor([prompt.label]).reshape(prediction.shape)
         if i < 20:
             messages.append(
                 f"predicted: {round(float(prediction), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
@@ -141,17 +143,26 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # train 0.330879863, test 0.3921
 # Dropout -> Lin -> Sigmoid rather than Lin -> Dropout -> Sigmoid
 # train loss:  0.3088, test loss: 0.3949
+# layernorm instead of dropout
+# train loss:  0.268, test loss: 0.3857
+# layernorm before every linear
+# train loss:  0.2665, test loss: 0.3845
+# layernorm not on last layer
+# test loss: 0.3819
+# single layernorm before second layer: 0.376
+# after figuring out to randomize train/test: 0.3884 (rip)
+# dropout before fc4: 0.3681 <- best
+# batch 100 epoch 100: 0.3707
+# batch 100 epoch 10: 0.3783 (0.39 rerolled?)
+# batch 10 epoch 100: train 0.09 (yeesh) train  0.4001
+
 
 def main() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
-    train_set = []
-    valid_set = []
-    for i, prompt in enumerate(prompts):
-        prompt.embed = prompt.embed.to(device).to(torch.float32)
-        if i % 10 < 8:
-            train_set.append(prompt)
-        else:
-            valid_set.append(prompt)
+    valid = len(prompts) // 5
+    train_set, valid_set = torch.utils.data.random_split(
+        prompts, [len(prompts) - valid, valid]
+    )
     print(len(train_set), len(valid_set))
     net = train(list(train_set))
     validate(list(valid_set), net)
