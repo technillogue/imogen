@@ -371,6 +371,8 @@ class Generator:
         is_crossfade = len(args.prompts) > 1
 
         # magic numbers divined by crowsonkb
+        # this normalizes the input batches of cutouts for clip, to prevent overfitting
+        # (?and get a better loss?)
         normalize = transforms.Normalize(
             mean=[0.48145466, 0.4578275, 0.40821073],
             std=[0.26862954, 0.26130258, 0.27577711],

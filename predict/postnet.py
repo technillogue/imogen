@@ -27,8 +27,8 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
         nn.ReLU(),
         nn.Linear(512, 256),
         nn.ReLU(),
-        nn.Linear(256, 1),
         nn.Dropout(p=0.1),
+        nn.Linear(256, 1),
         nn.Sigmoid(),
     ).to(device)
     net.apply(init_weights)
@@ -60,6 +60,7 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
             print(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
+    print("train loss: ", round(sum(losses) / len(losses), 4))
     return net
 
 
@@ -69,17 +70,20 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
     assert net
     loss_fn = nn.L1Loss()
     losses = []
-    print(prompts[0].embed.size)
+    messages = []
     for i, prompt in enumerate(prompts):
         prediction = net(prompt.embed)
-        actual = Tensor([float(bool(prompt.reacts))]).to(device)
+        actual = (
+            Tensor([float(bool(prompt.reacts))]).reshape(prediction.shape).to(device)
+        )
         if i < 20:
-            print(
-                f"predicted: {round(float(prediction), 4)}, actual: {int(bool(prompt.reacts))} ({prompt.reacts}). {prompt.prompt}"
+            messages.append(
+                f"predicted: {round(float(prediction), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
             )
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
-    print(f"L1: {round(sum(losses) / len(losses), 4)}")
+    print(f"test loss: {round(sum(losses) / len(losses), 4)}")
+    print("\n".join(messages))
 
 
 # MSE: 0.49840676848697946
@@ -135,6 +139,9 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # loss: 0.357416698303858, L1: 0.4058
 # after refactor, excluding prompts that were never sent and prompts with "/imagine" or "in line"
 # train 0.330879863, test 0.3921
+# Dropout -> Lin -> Sigmoid rather than Lin -> Dropout -> Sigmoid
+# train loss:  0.3088, test loss: 0.3949
+
 def main() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
     train_set = []
@@ -149,11 +156,13 @@ def main() -> None:
     net = train(list(train_set))
     validate(list(valid_set), net)
 
+
 def train_prod() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
     for prompt in prompts:
         prompt.embed = prompt.embed.to(device).to(torch.float32)
     net = train(prompts)
 
+
 if __name__ == "__main__":
-    train_prod()
+    main()
