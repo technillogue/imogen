@@ -8,13 +8,14 @@ import pdb
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Union
-
+from datetime import datetime
 import kornia.augmentation as K
 import torch
 from omegaconf import OmegaConf
 from PIL import Image, ImageFile
 from torch import Tensor, nn, optim
 from torch.nn import functional as F
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
@@ -40,7 +41,7 @@ logger.addHandler(console_handler)
 def mk_slug(text: Union[str, list[str]]) -> str:
     "strip offending charecters"
     text = "".join(text).encode("ascii", errors="ignore").decode()
-    return (
+    return datetime.now().isoformat() + (
         "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200]
         + hex(hash(text))[-4:]
     )
@@ -161,7 +162,7 @@ def load_vqgan_model(config_path: str, checkpoint_path: str) -> "VQModel":
 class Prompt(nn.Module):
     def __init__(
         self,
-        embed: Tensor,
+        embed: Tensor,  # Tensor[1, 512]
         weight: float = 1.0,
         stop: float = float("-inf"),
         dwelt: int = 0,
@@ -175,6 +176,7 @@ class Prompt(nn.Module):
         self.register_buffer("stop", torch.as_tensor(stop))
 
     def forward(self, image_embedding: Tensor) -> Tensor:
+        # image_embedding: Tensor[64, 512]
         # euclidian norm
         image_normed = F.normalize(image_embedding.unsqueeze(1), dim=2)
         text_normed = F.normalize(self.embed.unsqueeze(0), dim=2)
@@ -253,6 +255,20 @@ def add_stegano_data(filename):
     lsb.hide(filename, json.dumps(data)).save(filename)
 
 
+class ReactionPredictor(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.predictor = torch.load(
+            "predict/reaction_predictor.pth",
+            map_location="cuda:0" if torch.cuda.is_available() else "cpu",
+        )
+
+    def forward(self, generated_image_embedding: Tensor) -> Tensor:
+        # image_embedding is usually [64, 512]
+        # predictor returns 1 if it would get reactions, but we want 0 to be good
+        return 1 - self.predictor(generated_image_embedding).mean()
+
+
 class Generator:
     "class for holding onto the models"
 
@@ -279,7 +295,7 @@ class Generator:
             and self.args.clip_model == new_args.clip_model
         )
 
-    def embed(self, text: str) -> Tensor:
+    def embed(self, text: str) -> Tensor:  # Tensor[1, 512]
         "CLIP embed the text, stripping url"
 
         def no_url() -> Iterable[str]:
@@ -358,7 +374,7 @@ class Generator:
         @torch.no_grad()
         def checkin(i: int, losses: "list[Tensor]") -> None:
             "log loss and save an image"
-            losses_str = ", ".join(f"{loss.item():g}" for loss in losses)
+            losses_str = ", ".join(f"{torch.mean(loss).item():g}" for loss in losses)
             tqdm.write(f"i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}")
             out = self.synth(z)
             TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/progress.png")
@@ -366,7 +382,7 @@ class Generator:
         prompts = [
             Prompt(self.embed(text), weight=weight, tag=text).to(device)
             for text, weight in zip(args.prompts, (1.0, 0.0))
-        ]
+        ] + [ReactionPredictor()]
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
 
@@ -451,34 +467,43 @@ class Generator:
             generated_image_embedding = self.perceptor.encode_image(
                 normalize(cutouts)
             ).float()
-            result = []
-            # for cutout in cutouts:
-            #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
-            #     TF.to_pil_image(cutout).save(f"{loss}.png")
-            if args.init_weight:
-                result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
-            for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
-                result.append(prompt(generated_image_embedding))
-                # maybe we want to put this in a separate calculate_loss function
-                # that handles checking if we're fading?
             if args.video:
                 # if we're doing a video we need every single frame
                 with torch.no_grad():
                     TF.to_pil_image(out[0].cpu()).save(
                         f"output/{slug}/steps/{i:04}.png"
                     )
+
+            # return torch.mean(1 - reaction_predictor(generated_image_embedding))
+            result = []
+            # for visualizing cutout transforms:
+            # for cutout in cutouts:
+            #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
+            #     TF.to_pil_image(cutout).save(f"{loss}.png")
+
+            # if args.init_weight:
+            #     result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
+
+            for prompt in prompts:  # crossfade_prompts(prompts, args.fade, args.dwell):
+                result.append(prompt(generated_image_embedding))
+            # maybe we want to put this in a separate calculate_loss function
+            # that handles checking if we're fading?
             if not result:
                 raise IndexError
             return result
+
+        writer = SummaryWriter()  # type: ignore
 
         def train(i: int) -> float:
             "a single training iteration"
             opt.zero_grad()
             lossAll = ascend_txt(i, z)
-            if i % args.display_freq == 0:
-                checkin(i, lossAll)
             loss = sum(lossAll)
+            writer.add_scalar("loss/train", loss, i)
+            if i % args.display_freq == 0:
+                print(i, torch.mean(loss))
+                checkin(i, lossAll)
             # this tells autograd to adjust all the weights based on this new loss
             loss.backward()
             opt.step()
@@ -545,7 +570,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=["a better world"],
+    prompts=["pink elephant in space"],
     # text: override prompt
     image_prompts=[],
     noise_prompt_weights=[],
@@ -564,7 +589,7 @@ base_args = BetterNamespace(
     fade=50,  # @param {type:"number"}
     dwell=50,  # @param {type: "number"}
     profile=False,  # cprofile
-    video=False,
+    video=True,
 )
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args.with_update({"max_iterations":1}))
+    Generator(base_args).generate(base_args.with_update({"max_iterations": 200}))
