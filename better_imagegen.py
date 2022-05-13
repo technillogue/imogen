@@ -3,6 +3,7 @@
 # Copyright (c) 2021 Katherine Crowson
 # import warnings
 # warnings.simplefilter("ignore")
+import argparse
 import logging
 import pdb
 import sys
@@ -489,25 +490,29 @@ class Generator:
         #     return ", ".join(f"{loss.item():g}" for loss in lossAll)
 
 
-class BetterNamespace:
-    "this is just for compatibility with argparse.Namespace, but with updates"
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.mapping = kwargs
+# class BetterNamespace:
+#     "this is just for compatibility with argparse.Namespace, but with updates"
+#     def __init__(self, **kwargs: Any) -> None:
+#         self.mapping = kwargs
 
-    def __getattr__(self, attribute: str) -> Any:
-        if attribute == "prompts" and "text" in self.mapping:
-            return [self.mapping["text"]]
-        return self.mapping[attribute]
+#     def __getattr__(self, attribute: str) -> Any:
+#         if attribute == "prompts" and "text" in self.mapping:
+#             return [self.mapping["text"]]
+#         return self.mapping[attribute]
 
-    def with_update(self, other_dict: "dict[str, Any]") -> "BetterNamespace":
-        new_ns = BetterNamespace(**self.mapping)
-        new_ns.mapping.update(other_dict)
-        return new_ns
+#     def with_update(self, other_dict: "dict[str, Any]") -> "BetterNamespace":
+#         new_ns = BetterNamespace(**self.mapping)
+#         new_ns.mapping.update(other_dict)
+#         return new_ns
 
-    def __repr__(self) -> str:
-        return repr(self.mapping)
+#     def __repr__(self) -> str:
+#         return repr(self.mapping)
 
+class BetterNamespace(argparse.Namespace):
+    def with_update(self, other: dict[str, Any]) -> "BetterNamespace":
+        new_namespace = BetterNamespace(**self.__dict__)
+        new_namespace.__dict__.update(other)
 
 base_args = BetterNamespace(
     prompts=["pink elephant in space", "pastel fire sculpture"],
