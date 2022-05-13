@@ -7,7 +7,7 @@ import logging
 import pdb
 import sys
 from pathlib import Path
-from typing import Any, Iterable, Union
+from typing import Any, Iterable, Union, Optional
 from datetime import datetime
 import kornia.augmentation as K
 import torch
@@ -192,69 +192,6 @@ class Prompt(nn.Module):
         print(f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. ", end="")
 
 
-def add_xmp_data(nombrefichero):
-    imagen = ImgTag(filename=nombrefichero)
-    imagen.xmp.append_array_item(
-        libxmp.consts.XMP_NS_DC,
-        "creator",
-        "VQGAN+CLIP",
-        {"prop_array_is_ordered": True, "prop_value_is_array": True},
-    )
-    if args.prompts:
-        imagen.xmp.append_array_item(
-            libxmp.consts.XMP_NS_DC,
-            "title",
-            " | ".join(args.prompts),
-            {"prop_array_is_ordered": True, "prop_value_is_array": True},
-        )
-    else:
-        imagen.xmp.append_array_item(
-            libxmp.consts.XMP_NS_DC,
-            "title",
-            "None",
-            {"prop_array_is_ordered": True, "prop_value_is_array": True},
-        )
-    imagen.xmp.append_array_item(
-        libxmp.consts.XMP_NS_DC,
-        "i",
-        str(i),
-        {"prop_array_is_ordered": True, "prop_value_is_array": True},
-    )
-    imagen.xmp.append_array_item(
-        libxmp.consts.XMP_NS_DC,
-        "model",
-        nombre_modelo,
-        {"prop_array_is_ordered": True, "prop_value_is_array": True},
-    )
-    imagen.xmp.append_array_item(
-        libxmp.consts.XMP_NS_DC,
-        "seed",
-        str(seed),
-        {"prop_array_is_ordered": True, "prop_value_is_array": True},
-    )
-    imagen.xmp.append_array_item(
-        libxmp.consts.XMP_NS_DC,
-        "input_images",
-        str(input_images),
-        {"prop_array_is_ordered": True, "prop_value_is_array": True},
-    )
-    # for frases in args.prompts:
-    #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
-    imagen.close()
-
-
-def add_stegano_data(filename):
-    data = {
-        "title": " | ".join(args.prompts) if args.prompts else None,
-        "notebook": "VQGAN+CLIP",
-        "i": i,
-        "model": nombre_modelo,
-        "seed": str(seed),
-        "input_images": input_images,
-    }
-    lsb.hide(filename, json.dumps(data)).save(filename)
-
-
 class ReactionPredictor(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -271,6 +208,7 @@ class ReactionPredictor(nn.Module):
 
 class Generator:
     "class for holding onto the models"
+    reaction_predictor: Optional[ReactionPredictor] = None
 
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
@@ -335,6 +273,8 @@ class Generator:
         z_max = self.model.quantize.embedding.weight.max(dim=0).values[
             None, :, None, None
         ]
+        if args.good and not self.reaction_predictor:
+            self.reaction_predictor = ReactionPredictor()
 
         if args.seed is not None:
             seed = args.seed
@@ -382,7 +322,7 @@ class Generator:
         prompts = [
             Prompt(self.embed(text), weight=weight, tag=text).to(device)
             for text, weight in zip(args.prompts, (1.0, 0.0))
-        ] + [ReactionPredictor()]
+        ]
         prompt_queue = args.prompts[2:]
         is_crossfade = len(args.prompts) > 1
 
@@ -475,23 +415,24 @@ class Generator:
                         f"output/{slug}/steps/{i:04}.png"
                     )
 
-            # return torch.mean(1 - reaction_predictor(generated_image_embedding))
-            result = []
+            losses = []
             # for visualizing cutout transforms:
             # for cutout in cutouts:
             #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
             #     TF.to_pil_image(cutout).save(f"{loss}.png")
 
-            # if args.init_weight:
-            #     result.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
+            if args.init_weight:
+                losses.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
-            for prompt in prompts:  # crossfade_prompts(prompts, args.fade, args.dwell):
-                result.append(prompt(generated_image_embedding))
-            # maybe we want to put this in a separate calculate_loss function
-            # that handles checking if we're fading?
-            if not result:
+            for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
+                losses.append(prompt(generated_image_embedding))
+
+            if args.good:
+                assert self.reaction_predictor
+                losses.append(self.reaction_predictor(generated_image_embedding))
+            if not losses:
                 raise IndexError
-            return result
+            return losses
 
         writer = SummaryWriter()  # type: ignore
 
@@ -502,7 +443,6 @@ class Generator:
             loss = sum(lossAll)
             writer.add_scalar("loss/train", loss, i)
             if i % args.display_freq == 0:
-                print(i, torch.mean(loss))
                 checkin(i, lossAll)
             # this tells autograd to adjust all the weights based on this new loss
             loss.backward()
@@ -570,8 +510,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=["pink elephant in space"],
-    # text: override prompt
+    prompts=["pink elephant in space", "pastel fire sculpture"],
     image_prompts=[],
     noise_prompt_weights=[],
     size=[780, 480],
@@ -586,10 +525,11 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=None,
     max_iterations=300,
-    fade=50,  # @param {type:"number"}
-    dwell=50,  # @param {type: "number"}
+    fade=100,  # @param {type:"number"}
+    dwell=200,  # @param {type: "number"}
     profile=False,  # cprofile
     video=True,
+    good=True
 )
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args.with_update({"max_iterations": 200}))
+    Generator(base_args).generate(base_args.with_update({"max_iterations": 400}))

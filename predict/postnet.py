@@ -35,6 +35,7 @@ def train(prompts: list[Prompt]) -> nn.Sequential:
     ).to(device)
     net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
+
     loss_fn = nn.L1Loss()
     epochs = 10
     batch_size = 10

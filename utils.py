@@ -89,8 +89,71 @@ def resample(input: Tensor, size: tuple[int, int], align_corners: bool = True) -
     return F.interpolate(input, size, mode="bicubic", align_corners=align_corners)
 
 
-def resize_image(image, out_size):
+def resize_image(image: Image, out_size: tuple) -> Image:
     ratio = image.size[0] / image.size[1]
     area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
     size = round((area * ratio) ** 0.5), round((area / ratio) ** 0.5)
     return image.resize(size, Image.LANCZOS)
+
+
+# def add_xmp_data(filename):
+#     imagen = ImgTag(filename=filename)
+#     imagen.xmp.append_array_item(
+#         libxmp.consts.XMP_NS_DC,
+#         "creator",
+#         "VQGAN+CLIP",
+#         {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#     )
+#     if args.prompts:
+#         imagen.xmp.append_array_item(
+#             libxmp.consts.XMP_NS_DC,
+#             "title",
+#             " | ".join(args.prompts),
+#             {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#         )
+#     else:
+#         imagen.xmp.append_array_item(
+#             libxmp.consts.XMP_NS_DC,
+#             "title",
+#             "None",
+#             {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#         )
+#     imagen.xmp.append_array_item(
+#         libxmp.consts.XMP_NS_DC,
+#         "i",
+#         str(i),
+#         {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#     )
+#     imagen.xmp.append_array_item(
+#         libxmp.consts.XMP_NS_DC,
+#         "model",
+#         nombre_modelo,
+#         {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#     )
+#     imagen.xmp.append_array_item(
+#         libxmp.consts.XMP_NS_DC,
+#         "seed",
+#         str(seed),
+#         {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#     )
+#     imagen.xmp.append_array_item(
+#         libxmp.consts.XMP_NS_DC,
+#         "input_images",
+#         str(input_images),
+#         {"prop_array_is_ordered": True, "prop_value_is_array": True},
+#     )
+#     # for frases in args.prompts:
+#     #    imagen.xmp.append_array_item(libxmp.consts.XMP_NS_DC, 'Prompt' ,frases, {"prop_array_is_ordered":True, "prop_value_is_array":True})
+#     imagen.close()
+
+
+# def add_stegano_data(filename):
+#     data = {
+#         "title": " | ".join(args.prompts) if args.prompts else None,
+#         "notebook": "VQGAN+CLIP",
+#         "i": i,
+#         "model": nombre_modelo,
+#         "seed": str(seed),
+#         "input_images": input_images,
+#     }
+#     lsb.hide(filename, json.dumps(data)).save(filename)

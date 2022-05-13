@@ -120,4 +120,4 @@ async def prepare_token() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(prepare_token())
+    asyncio.run(prepare())
