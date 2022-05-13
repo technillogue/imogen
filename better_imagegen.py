@@ -490,7 +490,6 @@ class Generator:
         #     return ", ".join(f"{loss.item():g}" for loss in lossAll)
 
 
-
 # class BetterNamespace:
 #     "this is just for compatibility with argparse.Namespace, but with updates"
 #     def __init__(self, **kwargs: Any) -> None:
@@ -509,10 +508,12 @@ class Generator:
 #     def __repr__(self) -> str:
 #         return repr(self.mapping)
 
+
 class BetterNamespace(argparse.Namespace):
     def with_update(self, other: dict[str, Any]) -> "BetterNamespace":
         new_namespace = BetterNamespace(**self.__dict__)
         new_namespace.__dict__.update(other)
+
 
 base_args = BetterNamespace(
     prompts=["pink elephant in space", "pastel fire sculpture"],
@@ -530,11 +531,11 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=None,
     max_iterations=300,
-    fade=100,  # @param {type:"number"}
-    dwell=200,  # @param {type: "number"}
+    fade=50,  # @param {type:"number"}
+    dwell=50,  # @param {type: "number"}
     profile=False,  # cprofile
-    video=True,
-    good=True
+    video=False,
+    good=False,
 )
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args.with_update({"max_iterations": 400}))
+    Generator(base_args).generate(base_args.with_update({"max_iterations": 1}))
