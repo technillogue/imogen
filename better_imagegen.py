@@ -39,10 +39,11 @@ console_handler.setFormatter(fmt)
 logger.addHandler(console_handler)
 
 
-def mk_slug(text: Union[str, list[str]]) -> str:
+def mk_slug(text: Union[str, list[str]], time: str = "") -> str:
     "strip offending charecters"
-    text = "".join(text).encode("ascii", errors="ignore").decode()
-    return datetime.now().isoformat() + (
+    really_time = time if time else datetime.now().isoformat()
+    text = really_time + "".join(text).encode("ascii", errors="ignore").decode()
+    return (
         "".join(c if (c.isalnum() or c in "._") else "_" for c in text)[:200]
         + hex(hash(text))[-4:]
     )
@@ -197,7 +198,7 @@ class ReactionPredictor(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.predictor = torch.load(
-            "predict/reaction_predictor.pth",
+            "reaction_predictor.pth",
             map_location="cuda:0" if torch.cuda.is_available() else "cpu",
         )
 
@@ -274,8 +275,8 @@ class Generator:
         z_max = self.model.quantize.embedding.weight.max(dim=0).values[
             None, :, None, None
         ]
-        if args.good and not self.reaction_predictor:
-            self.reaction_predictor = ReactionPredictor()
+        if args.likely and not self.reaction_predictor:
+            self.likely_loss = ReactionPredictor()
 
         if args.seed is not None:
             seed = args.seed
@@ -305,7 +306,7 @@ class Generator:
 
         print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
-        slug = mk_slug(args.prompts)
+        slug = args.slug or mk_slug(args.prompts)
         try:
             (Path("output") / slug / "steps").mkdir(parents=True, exist_ok=True)
         except FileExistsError:
@@ -428,21 +429,22 @@ class Generator:
             for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
                 losses.append(prompt(generated_image_embedding))
 
-            if args.good:
+            if args.likely:
                 assert self.reaction_predictor
                 losses.append(self.reaction_predictor(generated_image_embedding))
             if not losses:
                 raise IndexError
             return losses
 
-        writer = SummaryWriter()  # type: ignore
+        writer = None if args.prod else SummaryWriter()  # type: ignore
 
         def train(i: int) -> float:
             "a single training iteration"
             opt.zero_grad()
             lossAll = ascend_txt(i, z)
             loss = sum(lossAll)
-            writer.add_scalar("loss/train", loss, i)
+            if writer:
+                writer.add_scalar("loss/train", loss, i)
             if i % args.display_freq == 0:
                 checkin(i, lossAll)
             # this tells autograd to adjust all the weights based on this new loss
@@ -490,29 +492,24 @@ class Generator:
         #     return ", ".join(f"{loss.item():g}" for loss in lossAll)
 
 
-# class BetterNamespace:
-#     "this is just for compatibility with argparse.Namespace, but with updates"
-#     def __init__(self, **kwargs: Any) -> None:
-#         self.mapping = kwargs
+class BetterNamespace:
+    "this is just for compatibility with argparse.Namespace, but with updates"
 
-#     def __getattr__(self, attribute: str) -> Any:
-#         if attribute == "prompts" and "text" in self.mapping:
-#             return [self.mapping["text"]]
-#         return self.mapping[attribute]
+    def __init__(self, **kwargs: Any) -> None:
+        self.mapping = kwargs
 
-#     def with_update(self, other_dict: "dict[str, Any]") -> "BetterNamespace":
-#         new_ns = BetterNamespace(**self.mapping)
-#         new_ns.mapping.update(other_dict)
-#         return new_ns
+    def __getattr__(self, attribute: str) -> Any:
+        if attribute == "prompts" and "text" in self.mapping:
+            return [self.mapping["text"]]
+        return self.mapping[attribute]
 
-#     def __repr__(self) -> str:
-#         return repr(self.mapping)
+    def with_update(self, other_dict: "dict[str, Any]") -> "BetterNamespace":
+        new_ns = BetterNamespace(**self.mapping)
+        new_ns.mapping.update(other_dict)
+        return new_ns
 
-
-class BetterNamespace(argparse.Namespace):
-    def with_update(self, other: dict[str, Any]) -> "BetterNamespace":
-        new_namespace = BetterNamespace(**self.__dict__)
-        new_namespace.__dict__.update(other)
+    def __repr__(self) -> str:
+        return repr(self.mapping)
 
 
 base_args = BetterNamespace(
@@ -535,7 +532,10 @@ base_args = BetterNamespace(
     dwell=50,  # @param {type: "number"}
     profile=False,  # cprofile
     video=False,
-    good=False,
+    likely=False,
+    prod=True,
+    slug=None,
 )
+
 if __name__ == "__main__":
     Generator(base_args).generate(base_args.with_update({"max_iterations": 1}))

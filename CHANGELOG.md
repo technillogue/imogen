@@ -1,4 +1,22 @@
+## 1.3.1
 
+- only generate slug once and use that everywhere to keep the timestamp
+
+## 1.3.0
+
+- fuck it, good mode (aka likely) deserves a minor version bumo
+- add timestamps to slug
+- wait for seconds and try again before exiting on no prompt, to catch people asking for a prompt immediately after getting one back
+- after getting an error, also unclaim the prompt (might turn out to be a bad idea) 
+- also fix namespace lol
+
+## 1.2.14
+
+- good mode
+
+## 1.2.13
+
+- revert ViT/L
 
 ## 1.2.12.1
 

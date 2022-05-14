@@ -118,6 +118,7 @@ class Prompt:
     url: str
     slug: str = ""
     params: str = ""
+    inserted_ts: str = ""
     param_dict: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -126,7 +127,7 @@ class Prompt:
             assert isinstance(self.param_dict, dict)
         except (json.JSONDecodeError, AssertionError):
             self.param_dict = {}
-        self.slug = clipart.mk_slug(self.prompt)
+        self.slug = clipart.mk_slug(self.prompt, inserted_ts)
 
 
 @dataclasses.dataclass
@@ -136,6 +137,7 @@ class Result:
     loss: float
     seed: str
     filepath: str
+    inserted_ts: str
 
 
 def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
@@ -158,7 +160,7 @@ def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:
     logging.info("getting")
     # mark it as assigned, returning only if it got updated
     maybe_prompt = cursor.execute(
-        "UPDATE prompt_queue SET status='assigned', assigned_at=now(), hostname=%s WHERE id = %s RETURNING id AS prompt_id, prompt, params, url;",
+        "UPDATE prompt_queue SET status='assigned', assigned_at=now(), hostname=%s WHERE id = %s RETURNING id AS prompt_id, prompt, params, url, inserted_ts::text;",
         [hostname, prompt_id],
     ).fetchone()
     logging.info("set assigned")
@@ -183,8 +185,11 @@ def main() -> None:
             # try to claim
             prompt = get_prompt(conn)
             if not prompt:
-                stop()
-                continue
+                time.sleep(60)
+                prompt = get_prompt(conn)
+                if not prompt:
+                    stop()
+                    continue
             logging.info("got prompt: %s", prompt)
             try:
                 generator, result = handle_item(generator, prompt)
@@ -217,7 +222,7 @@ def main() -> None:
                 if "out of memory" in str(e):
                     sys.exit(137)
                 conn.execute(
-                    "UPDATE prompt_queue SET errors=errors+1 WHERE id=%s",
+                    "UPDATE prompt_queue SET status='pending', errors=errors+1 WHERE id=%s",
                     [prompt.prompt_id],
                 )
                 time.sleep(backoff)
@@ -269,9 +274,9 @@ def handle_item(generator: Gen, prompt: Prompt) -> tuple[Gen, Result]:
         open(image_prompt, "wb").write(r[image_prompt])
 
     prompt.param_dict["video"] = video
-    args = args.with_update(prompt.param_dict)
+    args = args.with_update(prompt.param_dict | {"slug": prompt.slug})
     logging.info(args)
-    path = f"output/{clipart.mk_slug(args.prompts)}"
+    path = f"output/{prompt.slug}"
     # feedforward_path = ""
     start_time = time.time()
     # if prompt.param_dict.get("feedforward"):

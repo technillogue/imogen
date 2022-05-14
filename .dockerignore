@@ -4,7 +4,6 @@ __pycache__
 results
 *gz
 *ckpt
-*pth
 *png
 *jpg
 *jpeg
