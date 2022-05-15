@@ -9,3 +9,5 @@ results
 *jpeg
 *mp4
 *mov
+*pth
+!reaction_predictor.pth

@@ -127,7 +127,7 @@ class Prompt:
             assert isinstance(self.param_dict, dict)
         except (json.JSONDecodeError, AssertionError):
             self.param_dict = {}
-        self.slug = clipart.mk_slug(self.prompt, inserted_ts)
+        self.slug = clipart.mk_slug(self.prompt, self.inserted_ts)
 
 
 @dataclasses.dataclass
@@ -137,7 +137,6 @@ class Result:
     loss: float
     seed: str
     filepath: str
-    inserted_ts: str
 
 
 def get_prompt(conn: psycopg.Connection) -> Optional[Prompt]:

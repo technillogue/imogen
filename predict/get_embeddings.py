@@ -7,7 +7,7 @@ import asyncpg
 import torch
 import tqdm
 from clip import clip, model
-from core import BasicPrompt, TokenPrompt, Prompt, embed
+from core import BasicPrompt, TokenPrompt, Prompt, FilePrompt, ImgPrompt, embed, ImageEmbedder
 
 
 async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
@@ -26,19 +26,19 @@ async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
     return [BasicPrompt(**row) for row in good + bad]
 
 
-async def get_all_rows() -> list[BasicPrompt]:
+async def get_all_rows(n: int = 0) -> list[BasicPrompt]:
     "just get every prompt"
     conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
     ret = await conn.fetch(
-        """ select prompt, max(map_len(reaction_map)) as reacts,
-        min(loss) as loss from prompt_queue
+        f""" select prompt, max(map_len(reaction_map)) as reacts,
+        min(loss) as loss, min(filepath) as filepath from prompt_queue
         where sent_ts is not null and status='done' and group_id<>''
-        group by prompt;
+        group by prompt {f'limit {n}' if n else ''};
         """
     )
     print(f"all rows: {len(ret)}")
     await conn.close()
-    return [BasicPrompt(**row) for row in ret]
+    return [FilePrompt(**row) for row in ret]
 
 
 def pick_best(prompts: list[BasicPrompt]) -> list[BasicPrompt]:
@@ -83,6 +83,22 @@ def embed_all(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Prompt]
     return embedded_prompts
 
 
+def embed_all_img(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[ImgPrompt]:
+    embedder = ImageEmbedder(perceptor, {"cutn": 64, "cut_pow": 1.0})
+    embedder.embed()
+    embedded_prompts: list[Prompt] = []
+    for prompt in tqdm.tqdm(prompts):
+        embedding = embed(perceptor, prompt.prompt).to("cpu").detach()
+        img_embedding = embedder.embed(prompt.filepath).to("cpu").detach()
+        embedded_prompts.append(
+            ImgPrompt(
+                prompt.prompt, prompt.reacts, prompt.loss, embedding, img_embedding
+            )
+        )
+    torch.cuda.empty_cache()
+    return embedded_prompts
+
+
 def tokenize_all(prompts: list[BasicPrompt]) -> list[TokenPrompt]:
     # cheating a bit
     return [
@@ -109,6 +125,16 @@ async def prepare() -> None:
     torch.save(prompts, "prompts.pth")
 
 
+async def prepare_img() -> None:
+    all_basic_prompts = await get_all_rows(20)
+    best = pick_best(all_basic_prompts)
+    kept_basic_prompts = balance(best)
+    perceptor = clip.load("ViT-B/32", jit=False)[0]
+    perceptor.eval()
+    prompts = embed_all_img(perceptor, kept_basic_prompts)
+    print("embedded: ", len(prompts))
+    torch.save(prompts, "img_prompts.pth")
+
 async def prepare_basic() -> None:
     torch.save(balance(pick_best(await get_all_rows())), "basic_prompts.pth")
 
@@ -120,4 +146,4 @@ async def prepare_token() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(prepare())
+    asyncio.run(prepare_img())

@@ -210,7 +210,7 @@ class ReactionPredictor(nn.Module):
 
 class Generator:
     "class for holding onto the models"
-    reaction_predictor: Optional[ReactionPredictor] = None
+    likely_loss: Optional[ReactionPredictor] = None
 
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
@@ -275,7 +275,7 @@ class Generator:
         z_max = self.model.quantize.embedding.weight.max(dim=0).values[
             None, :, None, None
         ]
-        if args.likely and not self.reaction_predictor:
+        if args.likely and not self.likely_loss:
             self.likely_loss = ReactionPredictor()
 
         if args.seed is not None:
@@ -335,6 +335,18 @@ class Generator:
             mean=[0.48145466, 0.4578275, 0.40821073],
             std=[0.26862954, 0.26130258, 0.27577711],
         )
+
+        def image_path_to_tensor(path: str, sideX: int, sideY: int) -> Tensor:
+            img = resize_image(Image.open(path).convert("RGB"), (sideX, sideY))
+            # Tensor[1, 3, sideX?, sideY?]
+            return TF.to_tensor(img).unsqueeze(0)
+
+
+        def image_tensor_to_embedding(img: Tensor, model: model.CLIP, norm: nn.Module) -> Tensor:
+            batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
+            # typically [64, 512]
+            return model.encode_image(norm(batch))
+
         for path in args.image_prompts:
             is_crossfade = False
             # resize images to the right resolution
@@ -420,7 +432,7 @@ class Generator:
             losses = []
             # for visualizing cutout transforms:
             # for cutout in cutouts:
-            #     loss = prompts[0](self.perceptor.encode_iamge(normalize(torch.unsqueeze(cutout, 0))))
+            #     loss = prompts[0](self.perceptor.encode_image(normalize(torch.unsqueeze(cutout, 0))))
             #     TF.to_pil_image(cutout).save(f"{loss}.png")
 
             if args.init_weight:
@@ -430,8 +442,8 @@ class Generator:
                 losses.append(prompt(generated_image_embedding))
 
             if args.likely:
-                assert self.reaction_predictor
-                losses.append(self.reaction_predictor(generated_image_embedding))
+                assert self.likely_loss
+                losses.append(self.likely_loss(generated_image_embedding))
             if not losses:
                 raise IndexError
             return losses

@@ -1,3 +1,19 @@
+## 1.3.5
+
+- last time please 
+
+## 1.3.4
+
+- fix broken change from `reaction_predictor` to `likely_loss`
+
+## 1.3.3
+
+- more stupid fix
+
+## 1.3.2
+
+- hopefully fix inserted_ts
+
 ## 1.3.1
 
 - only generate slug once and use that everywhere to keep the timestamp
