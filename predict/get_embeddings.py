@@ -2,12 +2,16 @@ import asyncio
 import os
 import random
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, Sequence, TypeVar
 import asyncpg
+import requests
 import torch
 import tqdm
 from clip import clip, model
-from core import BasicPrompt, TokenPrompt, Prompt, FilePrompt, ImgPrompt, embed, ImageEmbedder
+from core import BasicPrompt, FilePrompt, ImgPrompt, Prompt, TokenPrompt, embed
+from embed_image import ImageEmbedder
+
+P = TypeVar("P", BasicPrompt, FilePrompt)
 
 
 async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
@@ -26,7 +30,7 @@ async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
     return [BasicPrompt(**row) for row in good + bad]
 
 
-async def get_all_rows(n: int = 0) -> list[BasicPrompt]:
+async def get_all_rows(n: int = 0) -> list[FilePrompt]:
     "just get every prompt"
     conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
     ret = await conn.fetch(
@@ -41,7 +45,17 @@ async def get_all_rows(n: int = 0) -> list[BasicPrompt]:
     return [FilePrompt(**row) for row in ret]
 
 
-def pick_best(prompts: list[BasicPrompt]) -> list[BasicPrompt]:
+async def keep_uploaded(prompts: list[FilePrompt]) -> list[FilePrompt]:
+    conn = await asyncpg.connect(os.getenv("DATABASE_URL") or os.getenv("dev_db"))
+    uploaded = [
+        record["name"]
+        for record in await conn.fetch("select name from storage.objects")
+    ]
+    await conn.close()
+    return [prompt for prompt in prompts if prompt.filepath in uploaded]
+
+
+def pick_best(prompts: list[P]) -> list[P]:
     "pick the most reacted prompt from prompts with the same acceptable text"
     groups = defaultdict(list)
     # this group by is a bit redundant with the grouping in postgres so it's just filtering
@@ -52,15 +66,15 @@ def pick_best(prompts: list[BasicPrompt]) -> list[BasicPrompt]:
             and "in line" not in prompt.prompt
         ):
             groups[prompt.prompt].append(prompt)
-    bests: list[BasicPrompt] = []
+    bests: list[P] = []
     for group in groups.values():
         bests.append(max(group, key=lambda prompt: prompt.reacts))
     return bests
 
 
 def balance(
-    prompts: list[BasicPrompt], key: Callable = lambda prompt: bool(prompt.reacts)
-) -> list[BasicPrompt]:
+    prompts: list[P], key: Callable = lambda prompt: bool(prompt.reacts)
+) -> list[P]:
     "shuffle together equal amounts of each group. default to equal amounts of prompts with and without reactions"
     groups = defaultdict(list)
     random.shuffle(prompts)  # make sure the within-group ordering is random
@@ -72,7 +86,7 @@ def balance(
     return together
 
 
-def embed_all(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Prompt]:
+def embed_all(perceptor: model.CLIP, prompts: list[P]) -> list[Prompt]:
     embedded_prompts: list[Prompt] = []
     for prompt in tqdm.tqdm(prompts):
         embedding = embed(perceptor, prompt.prompt).to("cpu").detach()
@@ -83,13 +97,18 @@ def embed_all(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Prompt]
     return embedded_prompts
 
 
-def embed_all_img(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[ImgPrompt]:
+view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/imoges/"
+
+
+def embed_all_img(perceptor: model.CLIP, prompts: list[FilePrompt]) -> list[ImgPrompt]:
     embedder = ImageEmbedder(perceptor, {"cutn": 64, "cut_pow": 1.0})
-    embedder.embed()
-    embedded_prompts: list[Prompt] = []
+    embedded_prompts: list[ImgPrompt] = []
     for prompt in tqdm.tqdm(prompts):
         embedding = embed(perceptor, prompt.prompt).to("cpu").detach()
-        img_embedding = embedder.embed(prompt.filepath).to("cpu").detach()
+        path = f"images/{prompt.slug}"
+        if not os.path.exists(path):
+            open(path, "wb").write(requests.get(view_url + prompt.slug).content)
+        img_embedding = embedder.embed(path).to("cpu").detach()
         embedded_prompts.append(
             ImgPrompt(
                 prompt.prompt, prompt.reacts, prompt.loss, embedding, img_embedding
@@ -99,7 +118,7 @@ def embed_all_img(perceptor: model.CLIP, prompts: list[BasicPrompt]) -> list[Img
     return embedded_prompts
 
 
-def tokenize_all(prompts: list[BasicPrompt]) -> list[TokenPrompt]:
+def tokenize_all(prompts: list[P]) -> list[TokenPrompt]:
     # cheating a bit
     return [
         TokenPrompt(
@@ -126,14 +145,18 @@ async def prepare() -> None:
 
 
 async def prepare_img() -> None:
-    all_basic_prompts = await get_all_rows(20)
+    all_basic_prompts = await get_all_rows()
     best = pick_best(all_basic_prompts)
-    kept_basic_prompts = balance(best)
+    print("best: ", len(best))
+    uploaded = await keep_uploaded(best)
+    print("uploaded: ", len(uploaded))
+    kept_basic_prompts = balance(uploaded)
     perceptor = clip.load("ViT-B/32", jit=False)[0]
     perceptor.eval()
     prompts = embed_all_img(perceptor, kept_basic_prompts)
     print("embedded: ", len(prompts))
     torch.save(prompts, "img_prompts.pth")
+
 
 async def prepare_basic() -> None:
     torch.save(balance(pick_best(await get_all_rows())), "basic_prompts.pth")
