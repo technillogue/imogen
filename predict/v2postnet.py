@@ -32,10 +32,10 @@ def print_once(key: str, *args: Any) -> None:
 def train(prompts: list[ImgPrompt]) -> nn.Sequential:
     writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
     net = nn.Sequential(
-        nn.Linear(1024, 1024),  # fc1
+        nn.Linear(1024, 512),  # fc1
         nn.ReLU(),
-        nn.LayerNorm(1024),
-        nn.Linear(1024, 512),  # fc2
+        nn.LayerNorm(512),
+        nn.Linear(512, 512),  # fc2
         nn.ReLU(),
         nn.Linear(512, 256),  # fc3_256
         nn.ReLU(),
@@ -46,8 +46,8 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
     net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
-    epochs = 5
-    batch_size = 1
+    epochs = 10
+    batch_size = 4
     # data: list[tuple[Tensor, Tensor, float]] = []
     # for _ in range(epochs):
     #     for prompt in prompts:
@@ -70,8 +70,9 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
         opt.zero_grad()
         batch_start = batch_index * batch_size
         batch = prompts[batch_start : batch_start + batch_size]
-        embeds = torch.cat([massage_embeds(prompt) for prompt in batch])
-        actual = torch.cat([massage_actual(prompt) for prompt in batch])
+        embeds = torch.cat([massage_embeds(prompt).unsqueeze(0) for prompt in batch])
+        # embeds = (embeds - embeds.mean()) / embeds.std()
+        actual = torch.cat([massage_actual(prompt).unsqueeze(0) for prompt in batch])
         prediction = net(embeds)  # pylint: disable
         # actual = torch.cat([Tensor([[label]]) for _, _, label in batch]).to(device)
         loss = loss_fn(prediction, actual)
@@ -147,7 +148,18 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
 # test loss: 0.4025
 # batch 1 epoch 20
 # train 0.15, test loss: 0.4259
-
+# try revert to single image batch:
+# train loss: 0.2768
+# test loss: 0.4505
+# make batches [batch_size, 64, 1024] instead of [batch_size * 64, 2014]
+# train loss: 0.1522
+# test loss: 0.4218
+# standardize values to mean 0 stdev 1
+# train loss: 0.1525
+# test loss: 0.4377
+# less neuron
+# train loss: 0.18
+# test loss: 0.4386
 
 def main() -> None:
     prompts = torch.load("img_prompts.pth")  # type: ignore
