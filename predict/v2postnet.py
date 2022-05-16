@@ -6,6 +6,7 @@ from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 from clip import clip
 from core import ImgPrompt
+import postnet
 import subprocess
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -22,28 +23,47 @@ def init_weights(m: nn.Module) -> None:
 def clipboard(text: str) -> None:
     subprocess.run("fish -c clip", shell=True, input=text.encode())  # pylint: disable
 
+
 printed = {}
+
+
 def print_once(key: str, *args: Any) -> None:
     if key not in printed:
         print(*args)
     printed[key] = True
 
 
-def train(prompts: list[ImgPrompt]) -> nn.Sequential:
+class Likely(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.wide_projection = nn.Linear(1024, 512)
+        self.narrow_projection = nn.Linear(512, 512)
+        self.net = nn.Sequential(
+            nn.ReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),  # fc2
+            nn.ReLU(),
+            nn.Linear(512, 256),  # fc3_256
+            nn.ReLU(),
+            nn.Dropout(p=0.1),
+            nn.Linear(256, 1),  # fc4_1
+            nn.Sigmoid(),
+        ).to(device)
+
+    def predict_text(self, text_embed: Tensor) -> Tensor:
+        return self.net(self.narrow_projection(text_embed))
+
+    def predict_wide(self, wide_embed: Tensor) -> Tensor:
+        return self.net(self.wide_projection(wide_embed))
+
+    forward = predict_text
+
+
+def train(net: Optional[nn.Sequential], prompts: list[ImgPrompt]) -> nn.Sequential:
     writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
-    net = nn.Sequential(
-        nn.Linear(1024, 512),  # fc1
-        nn.ReLU(),
-        nn.LayerNorm(512),
-        nn.Linear(512, 512),  # fc2
-        nn.ReLU(),
-        nn.Linear(512, 256),  # fc3_256
-        nn.ReLU(),
-        nn.Dropout(p=0.1),
-        nn.Linear(256, 1),  # fc4_1
-        nn.Sigmoid(),
-    ).to(device)
-    net.apply(init_weights)
+    if not net:
+        net = torch.load("reaction_predictor.pth").to(device) or Likely().to(device)
+    # net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
     epochs = 10
@@ -73,7 +93,7 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
         embeds = torch.cat([massage_embeds(prompt).unsqueeze(0) for prompt in batch])
         # embeds = (embeds - embeds.mean()) / embeds.std()
         actual = torch.cat([massage_actual(prompt).unsqueeze(0) for prompt in batch])
-        prediction = net(embeds)  # pylint: disable
+        prediction = net.predict_wide(embeds)  # pylint: disable
         # actual = torch.cat([Tensor([[label]]) for _, _, label in batch]).to(device)
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
@@ -83,7 +103,7 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
         if (batch_index + 1) % 50 == 0:
             pbar.write(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
     writer.flush()  # type: ignore
-    torch.save(net, "reaction_predictor.pth")
+    torch.save(net, "reaction_predictor_tuned.pth")
     print(f"train loss: {round(sum(losses) / len(losses), 4)}")
     return net
 
@@ -116,8 +136,8 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
     messages = []
     for i, prompt in enumerate(prompts):
         prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device)
-        prediction = net(massage_embeds(prompt)).to("cpu")
-        actual = massage_actual(prompt).to("cpu")
+        prediction = net.predict_wide(massage_embeds(prompt).unsqueeze(0)).to("cpu")
+        actual = massage_actual(prompt).to("cpu").unsqueeze(0)
         if i < 20:
             messages.append(
                 f"predicted: {round(float(prediction.mean()), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
@@ -160,20 +180,30 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
 # less neuron
 # train loss: 0.18
 # test loss: 0.4386
+# transfer learning....
+# train loss:  0.2979
+# test loss: 0.4245
+# transfer without saving
+# train loss: 0.1837
+# test loss: 0.4572
+# 
 
 def main() -> None:
+    # net = Likely().to(device)
+    net = torch.load("reaction_predictor_tuned.pth").to(device)
+    net = postnet.main(net)
     prompts = torch.load("img_prompts.pth")  # type: ignore
     valid = len(prompts) // 5  # 20%
     train_set, valid_set = torch.utils.data.random_split(
         prompts, [len(prompts) - valid, valid]
     )
     print(len(train_set), len(valid_set))
-    net = train(list(train_set))
+    net = train(net, list(train_set))
     validate(list(valid_set), net)
 
 
 def train_prod() -> None:
-    prompts = torch.load("prompts.pth")  # type: ignore
+    prompts = torch.load("img_prompts.pth")  # type: ignore
     for prompt in prompts:
         prompt.embed = prompt.embed.to(device).to(torch.float32)
     train(prompts)

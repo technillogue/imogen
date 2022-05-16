@@ -156,6 +156,10 @@ async def prepare_img() -> None:
     prompts = embed_all_img(perceptor, kept_basic_prompts)
     print("embedded: ", len(prompts))
     torch.save(prompts, "img_prompts.pth")
+    text_only = [p for p in best if p not in uploaded]
+    text_prompts = embed_all(perceptor, balance(text_only))
+    torch.save(text_prompts, "text_prompts.pth")
+
 
 
 async def prepare_basic() -> None:

@@ -7,6 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 from clip import clip
 from core import Prompt
 from torch.cuda.amp import autocast
+#from v2postnet import Likely
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -19,20 +20,21 @@ def init_weights(m: nn.Module) -> None:
         m.bias.data.fill_(0.01)
 
 
-def train(prompts: list[Prompt]) -> nn.Sequential:
+def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
-    net = nn.Sequential(
-        nn.Linear(512, 512),  # fc1
-        nn.ReLU(),
-        nn.LayerNorm(512),
-        nn.Linear(512, 512),  # fc2
-        nn.ReLU(),
-        nn.Linear(512, 256),  # fc3_256
-        nn.ReLU(),
-        nn.Dropout(p=0.1),
-        nn.Linear(256, 1),  # fc4_1
-        nn.Sigmoid(),
-    ).to(device)
+    if not net:
+        net = nn.Sequential(
+            nn.Linear(512, 512),  # fc1
+            nn.ReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),  # fc2
+            nn.ReLU(),
+            nn.Linear(512, 256),  # fc3_256
+            nn.ReLU(),
+            nn.Dropout(p=0.1),
+            nn.Linear(256, 1),  # fc4_1
+            nn.Sigmoid(),
+        ).to(device)
     net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
 
@@ -158,15 +160,21 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # batch 10 epoch 100: train 0.09 (yeesh) train  0.4001
 
 
-def main() -> None:
-    prompts = torch.load("prompts.pth")  # type: ignore
-    valid = len(prompts) // 5
+# now with likely setup, batch 10 epoch 10:
+# train loss:  0.2979
+# test loss: 0.4245
+# 
+
+def main(net) -> None:
+    prompts = torch.load("text_prompts.pth")  # type: ignore
+    valid = len(prompts) // 10
     train_set, valid_set = torch.utils.data.random_split(
         prompts, [len(prompts) - valid, valid]
     )
     print(len(train_set), len(valid_set))
-    net = train(list(train_set))
+    net = train(net, list(train_set))
     validate(list(valid_set), net)
+    return net
 
 
 def train_prod() -> None:
