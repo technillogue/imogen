@@ -1,5 +1,5 @@
 import random
-from typing import Optional
+from typing import Optional, Any
 import torch
 import tqdm
 from torch import Tensor, nn
@@ -18,8 +18,16 @@ def init_weights(m: nn.Module) -> None:
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
 
+
 def clipboard(text: str) -> None:
-    subprocess.run("fish -c clip", shell=True, input=text.encode()) # pylint: disable
+    subprocess.run("fish -c clip", shell=True, input=text.encode())  # pylint: disable
+
+printed = {}
+def print_once(key: str, *args: Any) -> None:
+    if key not in printed:
+        print(*args)
+    printed[key] = True
+
 
 def train(prompts: list[ImgPrompt]) -> nn.Sequential:
     writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
@@ -39,7 +47,7 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
     epochs = 5
-    batch_size = 64
+    batch_size = 1
     # data: list[tuple[Tensor, Tensor, float]] = []
     # for _ in range(epochs):
     #     for prompt in prompts:
@@ -50,45 +58,52 @@ def train(prompts: list[ImgPrompt]) -> nn.Sequential:
     #             data.append((prompt.embed, cutout.to(device), prompt.label))
     # random.shuffle(data)
     for prompt in prompts:
-        prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device) # pylint: disable
+        prompt.embed = (
+            prompt.embed.reshape([512]).to(torch.float32).to(device)
+        )  # pylint: disable
     prompts = prompts * epochs
     random.shuffle(prompts)
-    # batches = int(len(data) / batch_size)
+    batches = int(len(prompts) / batch_size)
     losses = []
-    # pbar = tqdm.trange(batches)
-    # for batch_index in pbar:
-    pbar = tqdm.tqdm(enumerate(prompts))
-    for i, prompt in pbar:
+    pbar = tqdm.trange(batches)
+    for batch_index in pbar:
         opt.zero_grad()
-        # batch_start = batch_index * batch_size
-        # batch = data[batch_start : batch_start + batch_size]
-        # # Tensor[batch_size, 1024], unsqueeze adds a dimension to concat along
-        # embeds = torch.cat(
-        #     [torch.cat([text, img]).unsqueeze(0) for text, img, _ in batch]
-        # )
-        embeds, actual = massage(prompt)
-        prediction = net(embeds) # pylint: disable
+        batch_start = batch_index * batch_size
+        batch = prompts[batch_start : batch_start + batch_size]
+        embeds = torch.cat([massage_embeds(prompt) for prompt in batch])
+        actual = torch.cat([massage_actual(prompt) for prompt in batch])
+        prediction = net(embeds)  # pylint: disable
         # actual = torch.cat([Tensor([[label]]) for _, _, label in batch]).to(device)
         loss = loss_fn(prediction, actual)
         losses.append(float(loss))
         loss.mean().backward()
         opt.step()
-        writer.add_scalar("loss/train", sum(losses) / len(losses), i)  # type: ignore
-        if (i + 1) % 50 == 0:
-            pbar.write(f"batch {i} loss: {round(sum(losses)/len(losses), 4)}")
+        writer.add_scalar("loss/train", sum(losses) / len(losses), batch_index)  # type: ignore
+        if (batch_index + 1) % 50 == 0:
+            pbar.write(f"batch {batch_index} loss: {round(sum(losses)/len(losses), 4)}")
     writer.flush()  # type: ignore
     torch.save(net, "reaction_predictor.pth")
     print(f"train loss: {round(sum(losses) / len(losses), 4)}")
     return net
 
+
 # typically Tensor[64, 1024], Tensor[64, 1]
 def massage(prompt: ImgPrompt) -> tuple[Tensor, Tensor]:
-    text = prompt.embed #.reshape([512]).to(torch.float32).to(device)
-    input_embed = torch.cat(
-        [torch.cat([prompt.embed, cutout]).unsqueeze(0) for cutout in prompt.image_embed.to(device)]
+    return massage_embeds(prompt), massage_actual(prompt)
+
+
+def massage_embeds(prompt: ImgPrompt) -> Tensor:
+    text = prompt.embed.to(device)  # .reshape([512]).to(torch.float32).to(device)
+    return torch.cat(
+        [
+            torch.cat([prompt.embed, cutout]).unsqueeze(0)
+            for cutout in prompt.image_embed.to(device)
+        ]
     ).to(device)
-    actual = Tensor([[prompt.label] for _ in prompt.image_embed]).to(device)
-    return input_embed, actual
+
+
+def massage_actual(prompt: ImgPrompt) -> Tensor:
+    return Tensor([[prompt.label] for _ in prompt.image_embed]).to(device)
 
 
 def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
@@ -99,14 +114,9 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
     losses = []
     messages = []
     for i, prompt in enumerate(prompts):
-        text = prompt.embed.reshape([512]).to(torch.float32)
-        massaged = torch.cat(
-            [torch.cat([text, cutout]).unsqueeze(0) for cutout in prompt.image_embed]
-        ).to(device)
-        prediction = net(massaged).to("cpu")
-        actual = Tensor([prompt.label for _ in prompt.image_embed]).reshape(
-            prediction.shape
-        )
+        prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device)
+        prediction = net(massage_embeds(prompt)).to("cpu")
+        actual = massage_actual(prompt).to("cpu")
         if i < 20:
             messages.append(
                 f"predicted: {round(float(prediction.mean()), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
@@ -130,6 +140,14 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
 # single image batchs
 # train loss: 0.3053
 # test loss: 0.375
+# batches of 4 images, cutouts together
+# train loss: 0.2831
+# test loss: 0.4634
+# epoch 20
+# test loss: 0.4025
+# batch 1 epoch 20
+# train 0.15, test loss: 0.4259
+
 
 def main() -> None:
     prompts = torch.load("img_prompts.pth")  # type: ignore
