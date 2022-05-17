@@ -21,7 +21,7 @@ def init_weights(m: nn.Module) -> None:
 
 
 def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
-    writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
+    writer = SummaryWriter() #comment=input("comment for run> "))  # type: ignore
     if not net:
         net = nn.Sequential(
             nn.Linear(512, 512),  # fc1
@@ -39,7 +39,7 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
 
     loss_fn = nn.L1Loss()
-    epochs = 10
+    epochs = 1
     batch_size = 10
     for prompt in prompts:
         prompt.embed = prompt.embed.to(device).to(torch.float32)

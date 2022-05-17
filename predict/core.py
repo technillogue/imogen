@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 from clip import clip, model
 from torch import Tensor, nn
+from typing import NewType, TypeVar
+
+
+BonelessPrompt = TypeVar("B", BasicPrompt, FilePrompt)
+EmbedPrompt = TypeVar("E", Prompt, ImgPrompt)
 
 
 def embed(perceptor: model.CLIP, text: str) -> Tensor:

@@ -33,6 +33,8 @@ def print_once(key: str, *args: Any) -> None:
     printed[key] = True
 
 
+NewType("[..., 512]", Tensor)
+
 class Likely(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -49,6 +51,7 @@ class Likely(nn.Module):
             nn.Linear(256, 1),  # fc4_1
             nn.Sigmoid(),
         ).to(device)
+        self.apply(init_weights)
 
     def predict_text(self, text_embed: Tensor) -> Tensor:
         return self.net(self.narrow_projection(text_embed))
@@ -60,13 +63,13 @@ class Likely(nn.Module):
 
 
 def train(net: Optional[nn.Sequential], prompts: list[ImgPrompt]) -> nn.Sequential:
-    writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
+    writer = SummaryWriter() # comment=input("comment for run> "))  # type: ignore
     if not net:
         net = torch.load("reaction_predictor.pth").to(device) or Likely().to(device)
     # net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     loss_fn = nn.L1Loss()
-    epochs = 10
+    epochs = 1
     batch_size = 4
     # data: list[tuple[Tensor, Tensor, float]] = []
     # for _ in range(epochs):
@@ -114,7 +117,7 @@ def massage(prompt: ImgPrompt) -> tuple[Tensor, Tensor]:
 
 
 def massage_embeds(prompt: ImgPrompt) -> Tensor:
-    text = prompt.embed.to(device)  # .reshape([512]).to(torch.float32).to(device)
+    text = prompt.embed.to(device).reshape([512]).to(torch.float32).to(device)
     return torch.cat(
         [
             torch.cat([prompt.embed, cutout]).unsqueeze(0)

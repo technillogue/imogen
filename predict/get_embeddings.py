@@ -64,6 +64,7 @@ def pick_best(prompts: list[P]) -> list[P]:
             any(c.isalpha() for c in prompt.prompt)
             and "/imagine" not in prompt.prompt
             and "in line" not in prompt.prompt
+            and "//" not in prompt.prompt
         ):
             groups[prompt.prompt].append(prompt)
     bests: list[P] = []

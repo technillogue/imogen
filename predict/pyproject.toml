@@ -18,6 +18,15 @@ regex = "*"
 
 [tool.poetry.dev-dependencies]
 
+
+[tool.mypy]
+ignore_missing_imports=true
+check_untyped_defs=false
+warn_redundant_casts=true
+#warn_unused_ignores=true
+warn_unused_configs=true
+
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
