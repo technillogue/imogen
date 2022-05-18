@@ -24,10 +24,9 @@ class Likely(nn.Module):
         self.narrow_projection = nn.Linear(512, 512)
         self.net = nn.Sequential(
             nn.ReLU(),
-            nn.LayerNorm(512),
+            #            nn.LayerNorm(512),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
-            nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
             nn.Dropout(p=0.05),
@@ -75,20 +74,21 @@ class LikelyTrainer:
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
         mixed_batches = self.prepare_batches(
             img_prompts,  # 535
-            batch_size=2,  # 128
-            epochs=10,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
-        ) + self.prepare_batches(
-            text_prompts,
-            batch_size=32,
-            epochs=5,  # 10577  # 10577/40 * epochs = 2644
+            batch_size=8,  # 128
+            epochs=15,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
         )
+        # + self.prepare_batches(
+        #     text_prompts,
+        #     batch_size=32,
+        #     epochs=3,  # 10577  # 10577/40 * epochs = 2644
+        # )
         random.shuffle(mixed_batches)
         return [
             batch
             for batches in [
-                self.prepare_batches(text_prompts, batch_size=32, epochs=1),
+                # self.prepare_batches(text_prompts, batch_size=32, epochs=1),
                 mixed_batches,
-                self.prepare_batches(img_prompts, batch_size=2, epochs=1),
+                # self.prepare_batches(img_prompts, batch_size=2, epochs=1),
             ]
             for batch in batches
         ]
@@ -118,14 +118,21 @@ class LikelyTrainer:
         return loss
 
     def train_text(self, batch: list[Prompt]) -> Scalar:
-        embeds = torch.cat([torch.cat([prompt.embed, prompt.embed], dim=1) for prompt in batch])
-        prediction = self.net.predict_wide(embeds)
+        double = True
+        if double:
+            embeds = torch.cat(
+                [torch.cat([prompt.embed, prompt.embed], dim=1) for prompt in batch]
+            )
+            prediction = self.net.predict_wide(embeds)
+        else:
+            embeds = torch.cat([prompt.embed for prompt in batch])
+            prediction = self.net.predict_wide(embeds)
         actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
         loss = self.loss_fn(prediction, actual)
         return loss
 
     def train(self, batches: list[Union[list[ImgPrompt], list[Prompt]]]) -> Likely:
-        opt = torch.optim.Adam(self.net.parameters(), lr=1e-4)
+        opt = torch.optim.Adam(self.net.parameters(), lr=1e-5)
         img_losses = []
         text_losses = []
         losses = []
@@ -155,8 +162,18 @@ class LikelyTrainer:
         torch.save(self.net, "likely.pth")
         return self.net
 
+
 # baseline with sandwiched mixed img epoch 10 batch 2 text epoch 5 batch 32
 # test loss: 0.4774
+# trying just images, didn't converge with dropout but removing one of them worked
+# test loss: 0.4516
+
+# batch 8
+# overall train loss:  0.2945
+# test loss: 0.4239
+# ....
+# batch 8, no layernorm, 1e-5, 15 epochs
+# test loss: 0.4251
 
 def main():
     ## set up text
