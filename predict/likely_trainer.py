@@ -118,8 +118,8 @@ class LikelyTrainer:
         return loss
 
     def train_text(self, batch: list[Prompt]) -> Scalar:
-        embeds = torch.cat([prompt.embed for prompt in batch])
-        prediction = self.net.predict_text(embeds)
+        embeds = torch.cat([torch.cat([prompt.embed, prompt.embed], dim=1) for prompt in batch])
+        prediction = self.net.predict_wide(embeds)
         actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
         loss = self.loss_fn(prediction, actual)
         return loss
@@ -155,6 +155,8 @@ class LikelyTrainer:
         torch.save(self.net, "likely.pth")
         return self.net
 
+# baseline with sandwiched mixed img epoch 10 batch 2 text epoch 5 batch 32
+# test loss: 0.4774
 
 def main():
     ## set up text
@@ -182,6 +184,7 @@ def main():
     postnet.validate(list(text_valid_set), trainer.net)
     print("image validation")
     v2postnet.validate(list(img_valid_set), trainer.net)
+    return trainer
 
 
-main()
+result = main()

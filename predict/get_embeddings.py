@@ -74,7 +74,7 @@ def pick_best(prompts: list[P]) -> list[P]:
 
 
 def balance(
-    prompts: list[P], key: Callable = lambda prompt: bool(prompt.reacts)
+    prompts: list[P], key: Callable = lambda prompt: prompt.label
 ) -> list[P]:
     "shuffle together equal amounts of each group. default to equal amounts of prompts with and without reactions"
     groups = defaultdict(list)
@@ -147,7 +147,7 @@ async def prepare() -> None:
 
 async def prepare_img() -> None:
     all_basic_prompts = await get_all_rows()
-    best = pick_best(all_basic_prompts)
+    best = pick_best(all_basic_prompts) # filters bad stuff
     print("best: ", len(best))
     uploaded = await keep_uploaded(best)
     print("uploaded: ", len(uploaded))
@@ -157,7 +157,7 @@ async def prepare_img() -> None:
     prompts = embed_all_img(perceptor, kept_basic_prompts)
     print("embedded: ", len(prompts))
     torch.save(prompts, "img_prompts.pth")
-    text_only = [p for p in best if p not in uploaded]
+    text_only = [p for p in best if p not in kept_basic_prompts]
     text_prompts = embed_all(perceptor, balance(text_only))
     torch.save(text_prompts, "text_prompts.pth")
 
