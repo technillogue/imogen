@@ -76,12 +76,11 @@ class LikelyTrainer:
             img_prompts,  # 535
             batch_size=8,  # 128
             epochs=15,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
+        ) + self.prepare_batches(
+            text_prompts,
+            batch_size=32,
+            epochs=3,  # 10577  # 10577/40 * epochs = 2644
         )
-        # + self.prepare_batches(
-        #     text_prompts,
-        #     batch_size=32,
-        #     epochs=3,  # 10577  # 10577/40 * epochs = 2644
-        # )
         random.shuffle(mixed_batches)
         return [
             batch
@@ -118,7 +117,7 @@ class LikelyTrainer:
         return loss
 
     def train_text(self, batch: list[Prompt]) -> Scalar:
-        double = True
+        double = False
         if double:
             embeds = torch.cat(
                 [torch.cat([prompt.embed, prompt.embed], dim=1) for prompt in batch]
@@ -126,7 +125,7 @@ class LikelyTrainer:
             prediction = self.net.predict_wide(embeds)
         else:
             embeds = torch.cat([prompt.embed for prompt in batch])
-            prediction = self.net.predict_wide(embeds)
+            prediction = self.net.predict_text(embeds)
         actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
         loss = self.loss_fn(prediction, actual)
         return loss
@@ -174,6 +173,13 @@ class LikelyTrainer:
 # ....
 # batch 8, no layernorm, 1e-5, 15 epochs
 # test loss: 0.4251
+# add epoch 3 batch 32 text with double
+# overall train loss:  0.3569
+# test loss: 0.4158 (0.5 txt)
+# don't double, use predict_text
+# overall train loss:  0.3358
+# text test loss: 0.4151
+# img test loss: 0.3871
 
 def main():
     ## set up text
