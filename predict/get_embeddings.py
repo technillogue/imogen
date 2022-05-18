@@ -22,6 +22,7 @@ async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
     select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
     where status='done' and group_id<>'' and id % 3 <> $1
     and map_len(reaction_map)::bool::int = $2
+    and selector<>'ESRGAN'
     order by random() limit $3
     """
     good = await conn.ftech(query, skip, 1, n // 2)
