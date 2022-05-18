@@ -18,7 +18,7 @@ FROM ubuntu:hirsute
 WORKDIR /app
 RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y python3
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
-COPY --from=model /reaction_predictor.pth /app/reaction_predictor.pth
+COPY --from=model /reaction_predictor_prod.pth /app/reaction_predictor.pth
 COPY --from=prompts /prompts.pth /app/prompts.pth
 COPY ./server.py ./core.py ./knn.py /app/ 
 ENTRYPOINT ["/usr/bin/python3", "/app/server.py"]

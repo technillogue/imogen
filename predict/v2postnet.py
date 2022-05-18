@@ -33,8 +33,6 @@ def print_once(key: str, *args: Any) -> None:
     printed[key] = True
 
 
-NewType("[..., 512]", Tensor)
-
 class Likely(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -120,7 +118,7 @@ def massage_embeds(prompt: ImgPrompt) -> Tensor:
     text = prompt.embed.to(device).reshape([512]).to(torch.float32).to(device)
     return torch.cat(
         [
-            torch.cat([prompt.embed, cutout]).unsqueeze(0)
+            torch.cat([text, cutout]).unsqueeze(0)
             for cutout in prompt.image_embed.to(device)
         ]
     ).to(device)

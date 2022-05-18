@@ -3,11 +3,6 @@ from clip import clip, model
 from torch import Tensor, nn
 from typing import NewType, TypeVar
 
-
-BonelessPrompt = TypeVar("B", BasicPrompt, FilePrompt)
-EmbedPrompt = TypeVar("E", Prompt, ImgPrompt)
-
-
 def embed(perceptor: model.CLIP, text: str) -> Tensor:
     "normalized clip embedding of text"
     device = perceptor.token_embedding.weight.device
@@ -52,3 +47,7 @@ class TokenPrompt(BasicPrompt):
 @dataclass
 class ImgPrompt(Prompt):
     image_embed: Tensor
+
+
+BonelessPrompt = TypeVar("BonelessPrompt", BasicPrompt, FilePrompt)
+EmbedPrompt = TypeVar("EmbedPrompt", Prompt, ImgPrompt)
