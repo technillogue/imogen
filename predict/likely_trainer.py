@@ -135,7 +135,7 @@ class LikelyTrainer:
         img_losses = []
         text_losses = []
         losses = []
-        writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
+        writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
         pbar = tqdm.tqdm(batches)
         for i, batch in enumerate(pbar):
             if isinstance(batch[0], ImgPrompt):
