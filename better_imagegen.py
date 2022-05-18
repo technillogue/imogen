@@ -198,7 +198,7 @@ class ReactionPredictor(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.predictor = torch.load(
-            "reaction_predictor.pth",
+            "predict/likely.pth",
             map_location="cuda:0" if torch.cuda.is_available() else "cpu",
         )
 
@@ -336,16 +336,16 @@ class Generator:
             std=[0.26862954, 0.26130258, 0.27577711],
         )
 
-        def image_path_to_tensor(path: str, sideX: int, sideY: int) -> Tensor:
-            img = resize_image(Image.open(path).convert("RGB"), (sideX, sideY))
-            # Tensor[1, 3, sideX?, sideY?]
-            return TF.to_tensor(img).unsqueeze(0)
+        # def image_path_to_tensor(path: str, sideX: int, sideY: int) -> Tensor:
+        #     img = resize_image(Image.open(path).convert("RGB"), (sideX, sideY))
+        #     # Tensor[1, 3, sideX?, sideY?]
+        #     return TF.to_tensor(img).unsqueeze(0)
 
 
-        def image_tensor_to_embedding(img: Tensor, model: model.CLIP, norm: nn.Module) -> Tensor:
-            batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
-            # typically [64, 512]
-            return model.encode_image(norm(batch))
+        # def image_tensor_to_embedding(img: Tensor, model: model.CLIP, norm: nn.Module) -> Tensor:
+        #     batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
+        #     # typically [64, 512]
+        #     return model.encode_image(norm(batch))
 
         for path in args.image_prompts:
             is_crossfade = False
@@ -443,12 +443,13 @@ class Generator:
 
             if args.likely:
                 assert self.likely_loss
-                losses.append(self.likely_loss(generated_image_embedding))
+                massaged = torch.cat([torch.cat([prompts[0].embed[0], cutout]) for cutout in generated_image_embedding])
+                losses.append(self.likely_loss(massaged))
             if not losses:
                 raise IndexError
             return losses
 
-        writer = None if args.prod else SummaryWriter()  # type: ignore
+        writer = None if args.prod else SummaryWriter(comment="vqgan")  # type: ignore
 
         def train(i: int) -> float:
             "a single training iteration"
@@ -525,7 +526,7 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=["pink elephant in space", "pastel fire sculpture"],
+    prompts=["dragons"],
     image_prompts=[],
     noise_prompt_weights=[],
     size=[780, 480],
@@ -545,9 +546,9 @@ base_args = BetterNamespace(
     profile=False,  # cprofile
     video=False,
     likely=False,
-    prod=True,
+    prod=False,
     slug=None,
 )
 
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args.with_update({"max_iterations": 1}))
+    Generator(base_args).generate(base_args) #.with_update({"max_iterations": 1}))
