@@ -136,7 +136,7 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
     losses = []
     messages = []
     for i, prompt in enumerate(prompts):
-        no_wide = True
+        no_wide = False
         if no_wide:
             embed = torch.cat([prompt.image_embed.to(device), prompt.embed.to(device)])
             prediction = net.predict_text(embed).to("cpu")

@@ -74,12 +74,12 @@ class LikelyTrainer:
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
         mixed_batches = self.prepare_batches(
             img_prompts,  # 535
-            batch_size=2,  # 128
-            epochs=20,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
+            batch_size=8,  # 128
+            epochs=15,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
         ) + self.prepare_batches(
             text_prompts,
-            batch_size=10,
-            epochs=10,  # 10577  # 10577/40 * epochs = 2644
+            batch_size=32,
+            epochs=3,  # 10577  # 10577/40 * epochs = 2644
         )
         random.shuffle(mixed_batches)
         return [
@@ -105,7 +105,7 @@ class LikelyTrainer:
         # exactly list[list[Prompt], list[ImgPrompt], ...]
 
     def train_img(self, batch: list[ImgPrompt]) -> Scalar:
-        no_wide = True
+        no_wide = False
         if no_wide:
             embeds = torch.cat(
                 [prompt.image_embed.to(device) for prompt in batch]
@@ -147,7 +147,7 @@ class LikelyTrainer:
         return loss
 
     def train(self, batches: list[Union[list[ImgPrompt], list[Prompt]]]) -> Likely:
-        opt = torch.optim.AdamW(self.net.parameters(), lr=1e-5)
+        opt = torch.optim.SGD(self.net.parameters(), lr=1e-4, weight_decay=0.01)
         img_losses = []
         text_losses = []
         losses = []
@@ -197,6 +197,11 @@ class LikelyTrainer:
 # text test loss: 0.4151
 # img test loss: 0.3871
 
+# SGD 1e-5 ..
+# SDG 1e-4, weight_decay 0.01, img batch 8 epoch 15 txt batch 32 epoch 3
+# test loss: 0.4591
+# epochs * 50%
+# test loss: 0.47
 
 def main():
     ## set up text
