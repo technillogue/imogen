@@ -61,7 +61,7 @@ class Likely(nn.Module):
 
 
 def train(net: Optional[nn.Sequential], prompts: list[ImgPrompt]) -> nn.Sequential:
-    writer = SummaryWriter() # comment=input("comment for run> "))  # type: ignore
+    writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
     if not net:
         net = torch.load("reaction_predictor.pth").to(device) or Likely().to(device)
     # net.apply(init_weights)
@@ -136,9 +136,17 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
     losses = []
     messages = []
     for i, prompt in enumerate(prompts):
-        prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device)
-        prediction = net.predict_wide(massage_embeds(prompt).unsqueeze(0)).to("cpu")
-        actual = massage_actual(prompt).to("cpu").unsqueeze(0)
+        no_wide = True
+        if no_wide:
+            embed = torch.cat([prompt.image_embed.to(device), prompt.embed.to(device)])
+            prediction = net.predict_text(embed).to("cpu")
+            actual = Tensor(
+                [[prompt.label] for _ in prompt.image_embed] + [[prompt.label]]
+            ).to("cpu")
+        else:
+            prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device)
+            prediction = net.predict_wide(massage_embeds(prompt).unsqueeze(0)).to("cpu")
+            actual = massage_actual(prompt).to("cpu").unsqueeze(0)
         if i < 20:
             messages.append(
                 f"predicted: {round(float(prediction.mean()), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
@@ -187,7 +195,8 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
 # transfer without saving
 # train loss: 0.1837
 # test loss: 0.4572
-# 
+#
+
 
 def main() -> None:
     # net = Likely().to(device)
