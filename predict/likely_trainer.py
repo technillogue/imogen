@@ -239,7 +239,7 @@ class LikelyTrainer:
 # project to 1024
 # mean 0.4402 stdev 0.03463, min 0.3954
 # img batch 2
-# mean: 0.4252 stdev: 0.0261 <- best
+# mean: 0.4252 stdev: 0.0261 <------------ best
 # txt epoch 12
 # mean: 0.4388 stdev: 0.033 min: 0.3991
 # txt epoch 6 batch 16
@@ -252,7 +252,16 @@ class LikelyTrainer:
 # mean: 0.4382 stdev: 0.0176 min: 0.4116
 # fc2 256:
 # mean: 0.4407 stdev: 0.0208 min: 0.4121
-
+# img epoch 7:
+# mean: 0.4563 stdev: 0.0469 min: 0.389
+# GELU, img epoch 7
+# mean: 0.433 stdev: 0.0218 min: 0.4107
+# GELU, img epoch 15, lr1e-4:
+# mean: 0.503 stdev: 0.0486 min: 0.4397
+# AdamW lr 5e-5:
+# mean: 0.4742 stdev: 0.0412 min: 0.4238
+# Gelu img epoch 15 Adam 1e-5:
+# mean: 0.4558 stdev: 0.0377 min: 0.398
 def main():
     ## set up text
     text_prompts = torch.load("text_prompts.pth")  # type: ignore
