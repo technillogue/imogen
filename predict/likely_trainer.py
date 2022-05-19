@@ -24,9 +24,11 @@ class Likely(nn.Module):
         self.narrow_projection = nn.Linear(512, 512)
         self.net = nn.Sequential(
             nn.ReLU(),
-#            nn.LayerNorm(512),
+            #            nn.LayerNorm(512),
+            nn.Dropout(p=0.05),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
+            nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
             nn.Dropout(p=0.05),
@@ -72,15 +74,18 @@ class LikelyTrainer:
     def prepare_mixed_batches(
         self, img_prompts: list[ImgPrompt], text_prompts: list[Prompt]
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
-        mixed_batches = self.prepare_batches(
+        img_batches = self.prepare_batches(
             img_prompts,  # 651
             batch_size=4,  # 256
-            epochs=15,  # 
-        ) + self.prepare_batches(
-            text_prompts, # 11720
+            epochs=15,  #
+        )
+        text_batches = self.prepare_batches(
+            text_prompts,  # 11720
             batch_size=32,
             epochs=6,  # 10577/40 * epochs = 2644
         )
+        print("image batches:", len(img_batches), "text batches:", len(text_batches))
+        mixed_batches = img_batches + text_batches
         random.shuffle(mixed_batches)
         return [
             batch
@@ -208,15 +213,23 @@ class LikelyTrainer:
 # AdamW 1e-5, img batch 4 epoch 4 txt batch 512 epoch 28
 # test loss: 0.4281
 # img epoch 15 txt batch 32 epoch 3
-# test loss: 0.4621 but better train convergence 
-# img batch 8 and 2 are both worse than 4; 8 doesn't converge and 2 overfits 
+# test loss: 0.4621 but better train convergence
+# img batch 8 and 2 are both worse than 4; 8 doesn't converge and 2 overfits
 # layernorm, dropout 0.1
 # 0.4209
 # no layernorm, dropout 0.41
 # realize we were keeping dropout for validation and that made things... better?
 # sgd lr 1e-5 decay 0.02
 # 0.4576
-# 
+# baseline with adam, dropout 0.05, img batch 4 epoch 15, text batch 32 epoch 6
+# overall train loss:  0.3076
+# text validation: test loss: 0.4353
+# test loss: 0.4638
+# 3x dropout 0.05
+# 0.4253
+# maybe 0.4418? 
+
+
 def main():
     ## set up text
     text_prompts = torch.load("text_prompts.pth")  # type: ignore
