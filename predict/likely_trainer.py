@@ -1,4 +1,5 @@
 import random
+import statistics
 from typing import Any, Optional, Union, NewType, TypeVar
 import torch
 import tqdm
@@ -160,7 +161,7 @@ class LikelyTrainer:
         text_losses = []
         losses = []
         writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
-        pbar = tqdm.tqdm(batches)
+        pbar = tqdm.tqdm(batches, desc="batch")
         for i, batch in enumerate(pbar):
             if isinstance(batch[0], ImgPrompt):
                 loss = self.train_img(batch)  # .mean?
@@ -216,7 +217,7 @@ class LikelyTrainer:
 # test loss: 0.4621 but better train convergence
 # img batch 8 and 2 are both worse than 4; 8 doesn't converge and 2 overfits
 # layernorm, dropout 0.1
-# 0.4209 
+# 0.4209
 # no layernorm, dropout 0.41
 # realize we were keeping dropout for validation and that made things... better?
 # sgd lr 1e-5 decay 0.02
@@ -233,10 +234,12 @@ class LikelyTrainer:
 # txt batch 16 epoch 3
 # 0.4582, 0.4271, 0.3968
 # okay, testing baseline with 5 runs, avg 0.43586 stdev 0.029 median 0.4441 range 0.3973-0.4682
-# 1024
+# project to 1024
 # mean 0.4402 stdev 0.03463, min 0.3954
 # img batch 2
 # mean: 0.4252 stdev: 0.0261
+# txt epoch 12
+# mean: 0.4388 stdev: 0.033 min: 0.3991
 
 def main():
     ## set up text
@@ -267,10 +270,10 @@ def main():
     # return trainer
 
 
-test_losses = [main() for i in tqdm.trange(5)]
+test_losses = [main() for i in tqdm.trange(5, desc="runs")]
 stats = {
     "mean": statistics.mean(test_losses),
     "stdev": statistics.stdev(test_losses),
     "min": min(test_losses),
 }
-print(f"{k}: {round(v, 4)}" for k, v in stats.items())
+print(" ".join(f"{k}: {round(v, 4)}" for k, v in stats.items()))
