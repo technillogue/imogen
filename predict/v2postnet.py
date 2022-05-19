@@ -147,7 +147,7 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
             prompt.embed = prompt.embed.reshape([512]).to(torch.float32).to(device)
             prediction = net.predict_wide(massage_embeds(prompt).unsqueeze(0)).to("cpu")
             actual = massage_actual(prompt).to("cpu").unsqueeze(0)
-        if i < 20:
+        if i < 10:
             messages.append(
                 f"predicted: {round(float(prediction.mean()), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
             )
@@ -157,6 +157,7 @@ def validate(prompts: list[ImgPrompt], net: Optional[nn.Module] = None) -> None:
     clipboard(test_loss)
     print()
     print("\n".join(messages))
+    return sum(losses) / len(losses)
 
 
 # base arch: train 0.01 test 0.4614

@@ -76,7 +76,7 @@ class LikelyTrainer:
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
         img_batches = self.prepare_batches(
             img_prompts,  # 651
-            batch_size=4,  # 256
+            batch_size=2,  # 256
             epochs=15,  #
         )
         text_batches = self.prepare_batches(
@@ -130,11 +130,12 @@ class LikelyTrainer:
                 [massage_actual(prompt).unsqueeze(0) for prompt in batch]
             )
             prediction = self.net.predict_wide(embeds)  # pylint: disable
+        print_once("imgemb", "img embed:", embeds.shape)
         print_once("predshape", "img prediction shape:", prediction.shape)
         print_once("actshape", "img actual shape:", actual.shape)
         # actual = torch.cat([Tensor([[label]]) for _, _, label in batch]).to(device)
         loss = self.loss_fn(prediction, actual)
-        print_once("loss", loss.shape)
+        print_once("loss", "img loss: ", loss)
         return loss
 
     def train_text(self, batch: list[Prompt]) -> Scalar:
@@ -147,6 +148,7 @@ class LikelyTrainer:
         else:
             embeds = torch.cat([prompt.embed for prompt in batch])
             prediction = self.net.predict_text(embeds)
+        print_once("txtemb", "text embed:", embeds.shape)
         actual = torch.cat([Tensor([[prompt.label]]) for prompt in batch]).to(device)
         loss = self.loss_fn(prediction, actual)
         return loss
@@ -157,17 +159,15 @@ class LikelyTrainer:
         img_losses = []
         text_losses = []
         losses = []
-        writer = SummaryWriter(comment=input("comment for run> "))  # type: ignore
+        writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
         pbar = tqdm.tqdm(batches)
         for i, batch in enumerate(pbar):
             if isinstance(batch[0], ImgPrompt):
                 loss = self.train_img(batch)  # .mean?
-                print_once("imgshape", "image loss shape:", loss.shape)
                 img_losses.append(loss)
                 writer.add_scalar("loss/img", sum(img_losses) / len(img_losses), i)
             else:
                 loss = self.train_text(batch)
-                print_once("txtshape", "text loss shape:", loss.shape)
                 text_losses.append(loss)
                 writer.add_scalar("loss/text", sum(text_losses) / len(text_losses), i)
             losses.append(float(loss))
@@ -216,7 +216,7 @@ class LikelyTrainer:
 # test loss: 0.4621 but better train convergence
 # img batch 8 and 2 are both worse than 4; 8 doesn't converge and 2 overfits
 # layernorm, dropout 0.1
-# 0.4209
+# 0.4209 
 # no layernorm, dropout 0.41
 # realize we were keeping dropout for validation and that made things... better?
 # sgd lr 1e-5 decay 0.02
@@ -227,8 +227,16 @@ class LikelyTrainer:
 # test loss: 0.4638
 # 3x dropout 0.05
 # 0.4253
-# maybe 0.4418? 
-
+# maybe 0.4418?
+# no fixed bias
+# 0.4604, 0.4338, 0.4056
+# txt batch 16 epoch 3
+# 0.4582, 0.4271, 0.3968
+# okay, testing baseline with 5 runs, avg 0.43586 stdev 0.029 median 0.4441 range 0.3973-0.4682
+# 1024
+# mean 0.4402 stdev 0.03463, min 0.3954
+# img batch 2
+# mean: 0.4252 stdev: 0.0261
 
 def main():
     ## set up text
@@ -255,8 +263,14 @@ def main():
     print("text validation:")
     postnet.validate(list(text_valid_set), trainer.net)
     print("image validation")
-    v2postnet.validate(list(img_valid_set), trainer.net)
-    return trainer
+    return v2postnet.validate(list(img_valid_set), trainer.net)
+    # return trainer
 
 
-result = main()
+test_losses = [main() for i in tqdm.trange(5)]
+stats = {
+    "mean": statistics.mean(test_losses),
+    "stdev": statistics.stdev(test_losses),
+    "min": min(test_losses),
+}
+print(f"{k}: {round(v, 4)}" for k, v in stats.items())

@@ -81,7 +81,7 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
     for i, prompt in enumerate(prompts):
         prediction = net(prompt.embed.to(device).to(torch.float32)).to("cpu")
         actual = Tensor([prompt.label]).reshape(prediction.shape)
-        if i < 20:
+        if i < 5:
             messages.append(
                 f"predicted: {round(float(prediction), 4)}, actual: {prompt.label} ({prompt.reacts}). {prompt.prompt}"
             )
