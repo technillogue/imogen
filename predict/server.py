@@ -13,7 +13,9 @@ logging.basicConfig(
 app = web.Application()
 device = "cpu"
 net = torch.load("reaction_predictor.pth", map_location=device)  # type: ignore
+net.eval()
 perceptor = clip.load("ViT-B/32")[0]
+perceptor.eval()
 
 
 async def handle_request(request: web.Request) -> web.Response:

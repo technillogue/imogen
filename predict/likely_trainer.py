@@ -24,7 +24,7 @@ class Likely(nn.Module):
         self.narrow_projection = nn.Linear(512, 512)
         self.net = nn.Sequential(
             nn.ReLU(),
-            #            nn.LayerNorm(512),
+#            nn.LayerNorm(512),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
             nn.Linear(512, 256),  # fc3_256
@@ -73,13 +73,13 @@ class LikelyTrainer:
         self, img_prompts: list[ImgPrompt], text_prompts: list[Prompt]
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
         mixed_batches = self.prepare_batches(
-            img_prompts,  # 535
-            batch_size=8,  # 128
-            epochs=15,  # ( imgs:=535 * epochs:=10 / batch_size:=2) = 2675
+            img_prompts,  # 651
+            batch_size=4,  # 256
+            epochs=15,  # 
         ) + self.prepare_batches(
-            text_prompts,
+            text_prompts, # 11720
             batch_size=32,
-            epochs=3,  # 10577  # 10577/40 * epochs = 2644
+            epochs=6,  # 10577/40 * epochs = 2644
         )
         random.shuffle(mixed_batches)
         return [
@@ -147,7 +147,8 @@ class LikelyTrainer:
         return loss
 
     def train(self, batches: list[Union[list[ImgPrompt], list[Prompt]]]) -> Likely:
-        opt = torch.optim.SGD(self.net.parameters(), lr=1e-4, weight_decay=0.01)
+        # opt = torch.optim.SGD(self.net.parameters(), lr=1e-5, weight_decay=0.02)
+        opt = torch.optim.Adam(self.net.parameters(), lr=1e-5)
         img_losses = []
         text_losses = []
         losses = []
@@ -203,6 +204,19 @@ class LikelyTrainer:
 # epochs * 50%
 # test loss: 0.47
 
+# new dataset with cutn 128
+# AdamW 1e-5, img batch 4 epoch 4 txt batch 512 epoch 28
+# test loss: 0.4281
+# img epoch 15 txt batch 32 epoch 3
+# test loss: 0.4621 but better train convergence 
+# img batch 8 and 2 are both worse than 4; 8 doesn't converge and 2 overfits 
+# layernorm, dropout 0.1
+# 0.4209
+# no layernorm, dropout 0.41
+# realize we were keeping dropout for validation and that made things... better?
+# sgd lr 1e-5 decay 0.02
+# 0.4576
+# 
 def main():
     ## set up text
     text_prompts = torch.load("text_prompts.pth")  # type: ignore
@@ -224,7 +238,7 @@ def main():
     trainer = LikelyTrainer()
     batches = trainer.prepare_mixed_batches(img_train_set, text_train_set)
     trainer.train(batches)
-
+    trainer.net.eval()
     print("text validation:")
     postnet.validate(list(text_valid_set), trainer.net)
     print("image validation")

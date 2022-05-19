@@ -22,7 +22,7 @@ async def get_balanced_rows(n: int, skip: int = 0) -> list[BasicPrompt]:
     select prompt, map_len(reaction_map) as reacts, loss from prompt_queue
     where status='done' and group_id<>'' and id % 3 <> $1
     and map_len(reaction_map)::bool::int = $2
-    and selector<>'ESRGAN'
+    and (selector<>'ESRGAN' or selector is null)
     order by random() limit $3
     """
     good = await conn.ftech(query, skip, 1, n // 2)
@@ -38,6 +38,7 @@ async def get_all_rows(n: int = 0) -> list[FilePrompt]:
         f""" select prompt, max(map_len(reaction_map)) as reacts,
         min(loss) as loss, min(filepath) as filepath from prompt_queue
         where sent_ts is not null and status='done' and group_id<>''
+        and (selector<>'ESRGAN' or selector is null)
         group by prompt {f'limit {n}' if n else ''};
         """
     )
@@ -103,7 +104,7 @@ view_url = "https://mcltajcadcrkywecsigc.supabase.in/storage/v1/object/public/im
 
 
 def embed_all_img(perceptor: model.CLIP, prompts: list[FilePrompt]) -> list[ImgPrompt]:
-    embedder = ImageEmbedder(perceptor, {"cutn": 64, "cut_pow": 1.0})
+    embedder = ImageEmbedder(perceptor, {"cutn": 128, "cut_pow": 1.0})
     embedded_prompts: list[ImgPrompt] = []
     for prompt in tqdm.tqdm(prompts):
         embedding = embed(perceptor, prompt.prompt).to("cpu").detach()

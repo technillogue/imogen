@@ -32,6 +32,7 @@ class FilePrompt(BasicPrompt):
             .removesuffix(".png")
             .removesuffix("/progress")
         ) + ".png"
+        super().__post_init__()
 
 
 @dataclass
