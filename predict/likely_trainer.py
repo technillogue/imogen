@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 import postnet
 import v2postnet
 from core import ImgPrompt, EmbedPrompt, Prompt
-from v2postnet import massage_actual, massage_embeds, print_once
+from v2postnet import massage_actual, massage_embeds, print_once, clipboard
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -160,7 +160,9 @@ class LikelyTrainer:
         img_losses = []
         text_losses = []
         losses = []
-        writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
+        writer = SummaryWriter(
+            comment=COMMENT
+        )  # comment=input("comment for run> "))  # type: ignore
         pbar = tqdm.tqdm(batches, desc="batch")
         for i, batch in enumerate(pbar):
             if isinstance(batch[0], ImgPrompt):
@@ -237,9 +239,16 @@ class LikelyTrainer:
 # project to 1024
 # mean 0.4402 stdev 0.03463, min 0.3954
 # img batch 2
-# mean: 0.4252 stdev: 0.0261
+# mean: 0.4252 stdev: 0.0261 <- best
 # txt epoch 12
 # mean: 0.4388 stdev: 0.033 min: 0.3991
+# txt epoch 6 batch 16
+# mean: 0.4541 stdev: 0.028 min: 0.4249
+# baseline, AdamW,
+# mean: 0.4457 stdev: 0.0472 min: 0.409
+# double text
+# mean: 0.4391 stdev: 0.0221 min: 0.4062
+
 
 def main():
     ## set up text
@@ -270,10 +279,13 @@ def main():
     # return trainer
 
 
+COMMENT = input("comment for run> ")
 test_losses = [main() for i in tqdm.trange(5, desc="runs")]
 stats = {
     "mean": statistics.mean(test_losses),
     "stdev": statistics.stdev(test_losses),
     "min": min(test_losses),
 }
-print(" ".join(f"{k}: {round(v, 4)}" for k, v in stats.items()))
+msg = COMMENT + ":\n" + " ".join(f"{k}: {round(v, 4)}" for k, v in stats.items())
+print(msg)
+clipboard(msg)
