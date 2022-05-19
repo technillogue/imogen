@@ -248,7 +248,10 @@ class LikelyTrainer:
 # mean: 0.4457 stdev: 0.0472 min: 0.409
 # double text
 # mean: 0.4391 stdev: 0.0221 min: 0.4062
-
+# no_wide:
+# mean: 0.4382 stdev: 0.0176 min: 0.4116
+# fc2 256:
+# mean: 0.4407 stdev: 0.0208 min: 0.4121
 
 def main():
     ## set up text
