@@ -1,4 +1,5 @@
 import random
+import statistics
 from typing import Optional
 import torch
 import tqdm
@@ -27,8 +28,10 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
             nn.Linear(512, 512),  # fc1
             nn.ReLU(),
             nn.LayerNorm(512),
+            nn.Dropout(p=0.1),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
+            nn.Dropout(p=0.1),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
             nn.Dropout(p=0.1),
@@ -39,7 +42,7 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
 
     loss_fn = nn.L1Loss()
-    epochs = 1
+    epochs = 10
     batch_size = 10
     for prompt in prompts:
         prompt.embed = prompt.embed.to(device).to(torch.float32)
@@ -71,7 +74,7 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     return net
 
 
-def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
+def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> float:
     if not net:
         net = torch.load("reaction_predictor.pth").to(device)  # type: ignore
     assert net
@@ -89,6 +92,7 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
         losses.append(float(loss))
     print(f"test loss: {round(sum(losses) / len(losses), 4)}")
     print("\n".join(messages))
+    return sum(losses) / len(losses)
 
 
 # MSE: 0.49840676848697946
@@ -163,9 +167,12 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> None:
 # now with likely setup, batch 10 epoch 10:
 # train loss:  0.2979
 # test loss: 0.4245
-# 
 
-def main(net) -> None:
+
+# fresh-ish data, dropout, no layernorm, batch 10 epoch 10
+#mean: 0.4106 stdev: 0.0103 min: 0.4009
+
+def main(net) -> float:
     prompts = torch.load("text_prompts.pth")  # type: ignore
     valid = len(prompts) // 10
     train_set, valid_set = torch.utils.data.random_split(
@@ -173,16 +180,24 @@ def main(net) -> None:
     )
     print(len(train_set), len(valid_set))
     net = train(net, list(train_set))
-    validate(list(valid_set), net)
-    return net
+    net.eval()
+    return validate(list(valid_set), net)
+    #return net
 
 
 def train_prod() -> None:
     prompts = torch.load("prompts.pth")  # type: ignore
     for prompt in prompts:
         prompt.embed = prompt.embed.to(device).to(torch.float32)
-    net = train(prompts)
+    net = train(None, prompts)
 
 
 if __name__ == "__main__":
-    main()
+    test_losses = [main(None) for i in tqdm.trange(5, desc="runs")]
+    stats = {
+        "mean": statistics.mean(test_losses),
+        "stdev": statistics.stdev(test_losses),
+        "min": min(test_losses),
+    }
+    msg = " ".join(f"{k}: {round(v, 4)}" for k, v in stats.items())
+    print(msg)

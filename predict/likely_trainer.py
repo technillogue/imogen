@@ -32,7 +32,7 @@ class Likely(nn.Module):
             nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
-            nn.Dropout(p=0.05),
+            nn.Dropout(p=0.1),
             nn.Linear(256, 1),  # fc4_1
             nn.Sigmoid(),
         ).to(device)
@@ -262,6 +262,12 @@ class LikelyTrainer:
 # mean: 0.4742 stdev: 0.0412 min: 0.4238
 # Gelu img epoch 15 Adam 1e-5:
 # mean: 0.4558 stdev: 0.0377 min: 0.398
+# apparently baseline with img batch 2 epoch 15 txt batch 32 epoch 6 is now
+# mean: 0.4618 stdev: 0.0083 min: 0.454
+#reroll baseline:
+# mean: 0.4565 stdev: 0.0195 min: 0.4299
+#
+# 
 def main():
     ## set up text
     text_prompts = torch.load("text_prompts.pth")  # type: ignore
