@@ -18,6 +18,53 @@ Scalar = NewType("Scalar", Tensor)  # [1]
 Cutout = NewType("Cutout", Tensor)  # [64, 512]
 
 
+class MultiheadedSelfAttention(nn.Module):
+    def __init__(
+        self,
+        embed_dim,
+        num_heads=8,
+        attn_dropout=0.01,
+        proj_dropout=0.01,
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        assert (
+            embed_dim % num_heads == 0
+        ), "Embedding dim must be divisible by number of heads."
+        head_dim = embed_dim // num_heads
+        self.scale = head_dim**-0.5
+
+        self.qkv = nn.Linear(embed_dim, embed_dim * 3)
+        self.attn_dropout = nn.Dropout(attn_dropout)
+        self.projection = nn.Linear(embed_dim, embed_dim)
+        self.proj_dropout = nn.Dropout(proj_dropout)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(
+                2,  # qkv
+                0,  # batch
+                3,  # channel
+                1,  # num_heads
+                4,  # embed_dim
+            )
+        )
+        q, k, v = torch.chunk(qkv, 3)
+
+        attn = torch.bmm(q, k.transpose(-2, -1)) * self.scale  # <q,k> / sqrt(d)
+        attn.softmax(dim=-1)  # Softmax over embedding dim
+        attn = self.attn_dropout(attn)
+
+        x = torch.bmm(attn, v).transpose(1, 2).reshape(B, N, C)
+        x = self.projection(x)
+        x = self.proj_dropout(x)
+
+        return x
+
+
 class Likely(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -25,14 +72,16 @@ class Likely(nn.Module):
         self.narrow_projection = nn.Linear(512, 512)
         self.net = nn.Sequential(
             nn.ReLU(),
-            #            nn.LayerNorm(512),
+            # nn.LayerNorm(512),
             nn.Dropout(p=0.05),
-            nn.Linear(512, 512),  # fc2
+            nn.Linear(512, 256),  # fc2
             nn.ReLU(),
             nn.Dropout(p=0.05),
-            nn.Linear(512, 256),  # fc3_256
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
+            MultiheadedSelfAttention(256),
+            # nn.Dropout(p=0.05),
+            # nn.Linear(512, 256),  # fc3_256
+            # nn.ReLU(),
+            # nn.Dropout(p=0.1),
             nn.Linear(256, 1),  # fc4_1
             nn.Sigmoid(),
         ).to(device)
@@ -78,12 +127,12 @@ class LikelyTrainer:
         img_batches = self.prepare_batches(
             img_prompts,  # 651
             batch_size=2,  # 256
-            epochs=15,  #
+            epochs=30,  #
         )
         text_batches = self.prepare_batches(
             text_prompts,  # 11720
             batch_size=32,
-            epochs=6,  # 10577/40 * epochs = 2644
+            epochs=12,  # 10577/40 * epochs = 2644
         )
         print("image batches:", len(img_batches), "text batches:", len(text_batches))
         mixed_batches = img_batches + text_batches
@@ -264,10 +313,15 @@ class LikelyTrainer:
 # mean: 0.4558 stdev: 0.0377 min: 0.398
 # apparently baseline with img batch 2 epoch 15 txt batch 32 epoch 6 is now
 # mean: 0.4618 stdev: 0.0083 min: 0.454
-#reroll baseline:
+# reroll baseline:
 # mean: 0.4565 stdev: 0.0195 min: 0.4299
-#
-# 
+# attention?! double batch
+# 0.419
+# 8 heads
+# mean: 0.4097 stdev: 0.0028 min: 0.4066
+# two transformers?
+# mean: 0.4184 stdev: 0.005 min: 0.413
+
 def main():
     ## set up text
     text_prompts = torch.load("text_prompts.pth")  # type: ignore
@@ -307,3 +361,4 @@ stats = {
 msg = COMMENT + ":\n" + " ".join(f"{k}: {round(v, 4)}" for k, v in stats.items())
 print(msg)
 clipboard(msg)
+print("\a")  # bell

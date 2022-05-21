@@ -18,7 +18,8 @@ def init_weights(m: nn.Module) -> None:
         # m.half()
         # aka Glorot
         torch.nn.init.xavier_uniform_(m.weight)
-        m.bias.data.fill_(0.01)
+        if m.bias is not None:
+            m.bias.data.fill_(0.01)
 
 
 def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
@@ -27,7 +28,7 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
         net = nn.Sequential(
             nn.Linear(512, 512),  # fc1
             nn.ReLU(),
-            nn.LayerNorm(512),
+            # nn.LayerNorm(512),
             nn.Dropout(p=0.1),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
@@ -171,6 +172,8 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> float:
 
 # fresh-ish data, dropout, no layernorm, batch 10 epoch 10
 #mean: 0.4106 stdev: 0.0103 min: 0.4009
+#layernorm
+# mean: 0.4194 stdev: 0.0078 min: 0.4133
 
 def main(net) -> float:
     prompts = torch.load("text_prompts.pth")  # type: ignore
