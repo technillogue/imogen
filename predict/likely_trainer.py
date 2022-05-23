@@ -1,14 +1,22 @@
 import random
 import statistics
+from types import SimpleNamespace
 from typing import Any, Optional, Union, NewType, TypeVar
 import torch
 import tqdm
+import wandb
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 import postnet
 import v2postnet
 from core import ImgPrompt, EmbedPrompt, Prompt
 from v2postnet import massage_actual, massage_embeds, print_once, clipboard
+
+
+import wandb
+
+wandb.init(project="likely", entity="technillogue")
+
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -65,6 +73,12 @@ class MultiheadedSelfAttention(nn.Module):
         return x
 
 
+config = SimpleNamespace(
+    img_batch=2, img_epoch=30, text_batch=32, text_epoch=12, opt="Adam", lr=1e-5
+)
+wandb.config = config
+
+
 class Likely(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -77,11 +91,11 @@ class Likely(nn.Module):
             nn.Linear(512, 256),  # fc2
             nn.ReLU(),
             nn.Dropout(p=0.05),
-            MultiheadedSelfAttention(256),
-            # nn.Dropout(p=0.05),
-            # nn.Linear(512, 256),  # fc3_256
-            # nn.ReLU(),
-            # nn.Dropout(p=0.1),
+            # MultiheadedSelfAttention(256),
+            nn.Dropout(p=0.05),
+            nn.Linear(512, 256),  # fc3_256
+            nn.ReLU(),
+            nn.Dropout(p=0.1),
             nn.Linear(256, 1),  # fc4_1
             nn.Sigmoid(),
         ).to(device)
@@ -125,17 +139,15 @@ class LikelyTrainer:
         self, img_prompts: list[ImgPrompt], text_prompts: list[Prompt]
     ) -> list[Union[list[ImgPrompt], list[Prompt]]]:
         img_batches = self.prepare_batches(
-            img_prompts,  # 651
-            batch_size=2,  # 256
-            epochs=30,  #
+            img_prompts, batch_size=config.img_batch, epochs=config.img_epoch
         )
         text_batches = self.prepare_batches(
             text_prompts,  # 11720
-            batch_size=32,
-            epochs=12,  # 10577/40 * epochs = 2644
+            batch_size=config.text_batch,
+            epochs=config.text_epoch,  # 10577/40 * epochs = 2644
         )
         print("image batches:", len(img_batches), "text batches:", len(text_batches))
-        mixed_batches = img_batches + text_batches
+        mixed_batches = img_batches  # + text_batches
         random.shuffle(mixed_batches)
         return [
             batch
@@ -205,7 +217,7 @@ class LikelyTrainer:
 
     def train(self, batches: list[Union[list[ImgPrompt], list[Prompt]]]) -> Likely:
         # opt = torch.optim.SGD(self.net.parameters(), lr=1e-5, weight_decay=0.02)
-        opt = torch.optim.Adam(self.net.parameters(), lr=1e-5)
+        opt = torch.optim.Adam(self.net.parameters(), lr=config.lr)
         img_losses = []
         text_losses = []
         losses = []
@@ -214,22 +226,26 @@ class LikelyTrainer:
         )  # comment=input("comment for run> "))  # type: ignore
         pbar = tqdm.tqdm(batches, desc="batch")
         for i, batch in enumerate(pbar):
+            info = {}
             if isinstance(batch[0], ImgPrompt):
                 loss = self.train_img(batch)  # .mean?
                 img_losses.append(loss)
                 writer.add_scalar("loss/img", sum(img_losses) / len(img_losses), i)
+                info["img"] = sum(img_losses) / len(img_losses)
             else:
                 loss = self.train_text(batch)
                 text_losses.append(loss)
                 writer.add_scalar("loss/text", sum(text_losses) / len(text_losses), i)
+                info["text"] = sum(text_losses) / len(text_losses)
             losses.append(float(loss))
             print_once("step loss", "step loss: ", loss)
             loss.backward()
             opt.step()
             writer.add_scalar("loss/train", sum(losses) / len(losses), i)  # type: ignore
+            info["step"] = sum(losses) / len(losses)
+            wandb.log({"loss": info})
             if (i + 1) % 50 == 0:
                 pbar.write(f"batch {i} loss: {round(sum(losses)/len(losses), 4)}")
-
         writer.flush()  # type: ignore
         print("overall train loss: ", round(sum(losses) / len(losses), 4))
         torch.save(self.net, "likely.pth")
@@ -321,6 +337,7 @@ class LikelyTrainer:
 # mean: 0.4097 stdev: 0.0028 min: 0.4066
 # two transformers?
 # mean: 0.4184 stdev: 0.005 min: 0.413
+
 
 def main():
     ## set up text
