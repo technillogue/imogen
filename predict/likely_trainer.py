@@ -65,7 +65,6 @@ class MultiheadedSelfAttention(nn.Module):
         attn = torch.bmm(q, k.transpose(-2, -1)) * self.scale  # <q,k> / sqrt(d)
         attn.softmax(dim=-1)  # Softmax over embedding dim
         attn = self.attn_dropout(attn)
-
         x = torch.bmm(attn, v).transpose(1, 2).reshape(B, N, C)
         x = self.projection(x)
         x = self.proj_dropout(x)
@@ -76,7 +75,7 @@ class MultiheadedSelfAttention(nn.Module):
 config = SimpleNamespace(
     img_batch=2, img_epoch=30, text_batch=32, text_epoch=12, opt="Adam", lr=1e-5
 )
-wandb.config = config
+wandb.config = config.__dict__
 
 
 class Likely(nn.Module):
@@ -88,11 +87,11 @@ class Likely(nn.Module):
             nn.ReLU(),
             # nn.LayerNorm(512),
             nn.Dropout(p=0.05),
-            nn.Linear(512, 256),  # fc2
+            nn.Linear(512, 512),  # fc2
             nn.ReLU(),
             nn.Dropout(p=0.05),
             # MultiheadedSelfAttention(256),
-            nn.Dropout(p=0.05),
+            # nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
             nn.Dropout(p=0.1),
@@ -369,7 +368,7 @@ def main():
 
 
 COMMENT = input("comment for run> ")
-test_losses = [main() for i in tqdm.trange(5, desc="runs")]
+test_losses = [main() for i in tqdm.trange(1, desc="runs")]
 stats = {
     "mean": statistics.mean(test_losses),
     "stdev": statistics.stdev(test_losses),
