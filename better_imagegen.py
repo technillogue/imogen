@@ -20,6 +20,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
+import actually_stream
 
 from CLIP import clip
 from utils import resample, resize_image
@@ -259,6 +260,8 @@ class Generator:
         ).movedim(3, 1)
         return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
 
+    ffmpeg = None
+
     def generate(self, args: "BetterNamespace") -> tuple[float, int]:
         "actually generate an image using args"
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -341,7 +344,6 @@ class Generator:
         #     # Tensor[1, 3, sideX?, sideY?]
         #     return TF.to_tensor(img).unsqueeze(0)
 
-
         # def image_tensor_to_embedding(img: Tensor, model: model.CLIP, norm: nn.Module) -> Tensor:
         #     batch = make_cutouts(TF.to_tensor(img).unsqueeze(0).to(device))
         #     # typically [64, 512]
@@ -421,13 +423,17 @@ class Generator:
             generated_image_embedding = self.perceptor.encode_image(
                 normalize(cutouts)
             ).float()
-
             if args.video:
                 # if we're doing a video we need every single frame
                 with torch.no_grad():
-                    TF.to_pil_image(out[0].cpu()).save(
-                        f"output/{slug}/steps/{i:04}.png"
-                    )
+                    if not self.ffmpeg:
+                        self.ffmpeg = actually_stream.get_proc()
+                    assert self.ffmpeg.stdin
+                    TF.to_pil_image(out[0].cpu()).save(self.ffmpeg.stdin)
+                    self.ffmpeg.stdin.flush()
+                    # pil_image = TF.to_pil_image(out[0].cpu())
+                    # await self.image_queue.put(pil_image)
+
 
             losses = []
             # for visualizing cutout transforms:
@@ -443,7 +449,12 @@ class Generator:
 
             if args.likely:
                 assert self.likely_loss
-                massaged = torch.cat([torch.cat([prompts[0].embed[0], cutout]) for cutout in generated_image_embedding])
+                massaged = torch.cat(
+                    [
+                        torch.cat([prompts[0].embed[0], cutout])
+                        for cutout in generated_image_embedding
+                    ]
+                )
                 losses.append(self.likely_loss(massaged))
             if not losses:
                 raise IndexError
@@ -482,6 +493,8 @@ class Generator:
                 # pbar.update(1)
         except KeyboardInterrupt:
             pass
+        if self.ffmpeg:
+            self.ffmpeg.wait()
         return float(loss), seed
         # steps_without_checkin = 0
         # with tqdm() as pbar:
@@ -526,7 +539,13 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=["dragons"],
+    prompts=[
+        "purple elephant in space",
+        "the girl reading this",
+        "journey",
+        "reverie",
+        "dragons",
+    ],
     image_prompts=[],
     noise_prompt_weights=[],
     size=[780, 480],
@@ -551,4 +570,4 @@ base_args = BetterNamespace(
 )
 
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args) #.with_update({"max_iterations": 1}))
+    Generator(base_args).generate(base_args)  # .with_update({"max_iterations": 1}))
