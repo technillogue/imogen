@@ -1,15 +1,16 @@
 #!/usr/bin/python3.9
 # Copyright (c) 2022 Sylvie Liberman
 # Copyright (c) 2021 Katherine Crowson
-# import warnings
-# warnings.simplefilter("ignore")
 import argparse
+import asyncio
 import logging
 import pdb
 import sys
-from pathlib import Path
-from typing import Any, Iterable, Union, Optional
+import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Iterable, Optional, Union
+import aioredis
 import kornia.augmentation as K
 import torch
 from omegaconf import OmegaConf
@@ -20,8 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
-import actually_stream
-
+import utils
 from CLIP import clip
 from utils import resample, resize_image
 
@@ -209,6 +209,9 @@ class ReactionPredictor(nn.Module):
         return 1 - self.predictor(generated_image_embedding).mean()
 
 
+redis = aioredis.from_url(utils.get_secret("REDIS_URL"))
+
+
 class Generator:
     "class for holding onto the models"
     likely_loss: Optional[ReactionPredictor] = None
@@ -227,6 +230,8 @@ class Generator:
             .requires_grad_(False)
             .to(self.device)
         )
+        self.image_queue: asyncio.Queue[Image] = asyncio.Queue()
+        self.ext_prompt_queue: asyncio.Queue[str] = asyncio.Queue()
 
     def same_model(self, new_args: "BetterNamespace") -> bool:
         "are the new args the same model as we have?"
@@ -260,9 +265,7 @@ class Generator:
         ).movedim(3, 1)
         return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
 
-    ffmpeg = None
-
-    def generate(self, args: "BetterNamespace") -> tuple[float, int]:
+    async def generate(self, args: "BetterNamespace") -> tuple[float, int]:
         "actually generate an image using args"
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         cut_size = self.perceptor.visual.input_resolution
@@ -367,7 +370,7 @@ class Generator:
 
         # uses prompt_queue :(
         @torch.no_grad()
-        def crossfade_prompts(
+        async def crossfade_prompts(
             prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
         ) -> "list[Prompt]":
             "figure out the prompts and weights to use this iteration"
@@ -385,8 +388,10 @@ class Generator:
                 # first prompt gets less weight
                 waning_weight = float(first.weight) - 1 / fade
                 waxing_weight = min(1.0, float(second.weight) + 1 / fade)
-                prompts[0] = Prompt(
-                    first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
+                prompts[0] = (
+                    Prompt(
+                        first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
+                    ),
                 )
                 prompts[1] = Prompt(
                     second.embed, waxing_weight, dwelt=second.dwelt, tag=second.tag
@@ -396,15 +401,17 @@ class Generator:
                 prompts.pop(0)
                 # ???
                 # prompt = r.lpop("twitch_queue") # ???
-                if prompt_queue:
-                    # grab the next prompt if we have one, otherwise raise IndexError
-                    next_text = prompt_queue.pop(0)
-                    print("next text: ", next_text)
-                    prompts.append(
-                        Prompt(self.embed(next_text), weight=0, tag=next_text).to(
-                            device
-                        )
-                    )
+                # grab the next prompt if we have one, otherwise raise IndexError
+                next_text = (
+                    prompt_queue.pop(0)
+                    if prompt_queue
+                    else (await redis.lpop("stream_queue") or b"").decode()
+                )
+                if next_text:
+                    next_prompt = Prompt(
+                        self.embed(next_text), weight=0, tag=next_text
+                    ).to(device)
+                    prompts.append(next_prompt)
             if i % args.display_freq == 0:
                 for prompt in prompts:
                     prompt.describe()
@@ -412,7 +419,7 @@ class Generator:
             return prompts
 
         # uses prompts, prompt_queue...
-        def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
+        async def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
             "synthesize an image and evaluate it for loss"
             out = self.synth(z)
             cutouts = make_cutouts(out)
@@ -426,15 +433,10 @@ class Generator:
             if args.video:
                 # if we're doing a video we need every single frame
                 with torch.no_grad():
-                    if not self.ffmpeg:
-                        self.ffmpeg = actually_stream.get_proc()
-                    assert self.ffmpeg.stdin
-                    TF.to_pil_image(out[0].cpu()).save(self.ffmpeg.stdin)
-                    self.ffmpeg.stdin.flush()
-                    # pil_image = TF.to_pil_image(out[0].cpu())
-                    # await self.image_queue.put(pil_image)
-
-
+                    logging.info("putting image on queue")
+                    pil_image = TF.to_pil_image(out[0].cpu())
+                    await self.image_queue.put(pil_image)
+                    logging.info("queue size: %s ", self.image_queue.qsize())
             losses = []
             # for visualizing cutout transforms:
             # for cutout in cutouts:
@@ -444,8 +446,13 @@ class Generator:
             if args.init_weight:
                 losses.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
 
-            for prompt in crossfade_prompts(prompts, args.fade, args.dwell):
-                losses.append(prompt(generated_image_embedding))
+            for prompt in await crossfade_prompts(prompts, args.fade, args.dwell):
+                try:
+                    losses.append(prompt(generated_image_embedding))
+                except:
+                    import pdb
+
+                    pdb.set_trace()
 
             if args.likely:
                 assert self.likely_loss
@@ -462,18 +469,29 @@ class Generator:
 
         writer = None if args.prod else SummaryWriter(comment="vqgan")  # type: ignore
 
-        def train(i: int) -> float:
+        async def train(i: int) -> float:
             "a single training iteration"
             opt.zero_grad()
-            lossAll = ascend_txt(i, z)
+            lossAll = await ascend_txt(i, z)
             loss = sum(lossAll)
             if writer:
                 writer.add_scalar("loss/train", loss, i)
             if i % args.display_freq == 0:
                 checkin(i, lossAll)
-            # this tells autograd to adjust all the weights based on this new loss
-            loss.backward()
-            opt.step()
+                # this tells autograd to adjust all the weights based on this new loss
+
+            def opt_go_brr():
+                logging.info("inside opt_go_brr")
+                start = time.time()
+                loss.backward()
+                opt.step()
+                print("exiting opt_go_brr, elapsed: ", time.time() - start)
+
+            # unleash the GIL
+            logging.info("await asyncio.to_thread(opt_go_brr)")
+            await asyncio.to_thread(opt_go_brr)
+            logging.info("awaiting that thread done")
+
             with torch.no_grad():
                 # you have to make sure z isn't too big or too small
                 z.copy_(z.maximum(z_min).minimum(z_max))
@@ -484,7 +502,8 @@ class Generator:
             while 1:
                 # with tqdm() as pbar:
                 try:
-                    loss = train(i)
+                    loss = await train(i)
+                    await asyncio.sleep(0.001)
                 except IndexError:
                     break
                 if i == args.max_iterations:
@@ -493,8 +512,6 @@ class Generator:
                 # pbar.update(1)
         except KeyboardInterrupt:
             pass
-        if self.ffmpeg:
-            self.ffmpeg.wait()
         return float(loss), seed
         # steps_without_checkin = 0
         # with tqdm() as pbar:
@@ -540,15 +557,12 @@ class BetterNamespace:
 
 base_args = BetterNamespace(
     prompts=[
-        "purple elephant in space",
+        "pink elephant in space on fire",
         "the girl reading this",
-        "journey",
-        "reverie",
-        "dragons",
     ],
     image_prompts=[],
     noise_prompt_weights=[],
-    size=[780, 480],
+    size=[780 // 4, 480 // 4],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -560,14 +574,16 @@ base_args = BetterNamespace(
     display_freq=10,
     seed=None,
     max_iterations=300,
-    fade=50,  # @param {type:"number"}
-    dwell=50,  # @param {type: "number"}
+    fade=5,  # @param {type:"number"}
+    dwell=5,  # @param {type: "number"}
     profile=False,  # cprofile
-    video=False,
+    video=True,
     likely=False,
     prod=False,
     slug=None,
 )
 
 if __name__ == "__main__":
-    Generator(base_args).generate(base_args)  # .with_update({"max_iterations": 1}))
+    asyncio.run(
+        Generator(base_args).generate(base_args)
+    )  # .with_update({"max_iterations": 1}))
