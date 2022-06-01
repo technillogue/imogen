@@ -414,13 +414,14 @@ class Generator:
                 # prompt = r.lpop("twitch_queue") # ???
                 # grab the next prompt if we have one, otherwise raise IndexError
                 print("checking next text")
-                next_text = (
-                    prompt_queue.pop(0)
-                    if prompt_queue
-                    else (await redis.lpop("stream_queue") or b"").decode()
-                    if redis
-                    else ""
-                )
+                next_text = ""
+                if prompt_queue:
+                    next_text = prompt_queue.pop()
+                elif redis:
+                    maybe = await redis.lpop("stream_queue")
+                    if maybe:
+                        await redis.rpush("stream_history", maybe)
+                        next_text = maybe.decode()
                 if next_text:
                     next_prompt = Prompt(
                         self.embed(next_text), weight=0, tag=next_text
