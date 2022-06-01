@@ -13,18 +13,19 @@ import logging
 fps = 30
 dest = os.getenv("YOUTUBE_URL") or open("youtube_url").read()
 silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
-pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r {fps} -i - -r {fps}"""
+pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
 cmd = f"""ffmpeg -re {silence} \\
     {pipe} \\
     -f flv \\
     -pix_fmt yuvj420p \\
+    -max_muxing_queue_size 512
     -x264-params keyint=48:min-keyint=48:scenecut=-1 \\
     -b:v 1000k \\
     -b:a 128k \\
     -ar 44100 \\
     -acodec aac \\
     -vcodec libx264 \\
-    -preset veryfast \\
+    -preset ultrafast \\
     -crf 50 \\
     {dest}
 """.replace(
@@ -34,7 +35,10 @@ cmd = f"""ffmpeg -re {silence} \\
 
 def run() -> None:
     d = "output/2022-05-13T16:11:18.947478pink_elephant_in_spacepastel_fire_sculpture8688"
-    imgs = [get_img_bytes(Image.open(str(path))) for path in sorted(Path(d).glob("**/*png"))[50:150]]
+    imgs = [
+        get_img_bytes(Image.open(str(path)))
+        for path in sorted(Path(d).glob("**/*png"))[50:150]
+    ]
     p = Popen(
         cmd.split(),
         stdin=PIPE,
@@ -49,7 +53,6 @@ def run() -> None:
             p.stdin.flush()
     p.stdin.close()
     p.wait()
-
 
 
 def get_proc() -> Popen:
@@ -85,8 +88,18 @@ def log_task_result(
 
 
 class Streamer:
+    frame_times: list[float] = []
+
+    async def fps(self):
+        while 1:
+            now = time.time()
+            self.frame_times = [t for t in self.frame_times if now - t <= 1]
+            logging.info(f"fps: {len(self.frame_times)}")
+            await asyncio.sleep(1)
+            if round(time.time() - now, 4) > 1:
+                logging.info("elapsed time between fps ticks: %.4f", time.time() - now)
+
     async def yolo(self) -> None:
-        del self
         args = clipart.base_args
         generator = clipart.Generator(args)
         generate_task = asyncio.create_task(generator.generate(args))
@@ -96,6 +109,7 @@ class Streamer:
         await asyncio.sleep(1)
         ffmpeg_proc: Optional[asyncio.subprocess.Process] = None
         last_bytes: Optional[bytes] = None
+        frame_times = []
         while not generate_task.done():
             # potentially, we could delay starting the stream until we have the first *two* frames,
             # and crossfade between them until the following frame is available
@@ -105,21 +119,26 @@ class Streamer:
                 logging.info("waiting for next frame")
                 wait_start = time.time()
                 last_bytes = get_img_bytes(
-                    await asyncio.wait_for(generator.image_queue.get(), 0.1)
+                    await asyncio.wait_for(generator.image_queue.get(), 0.2)
                 )
                 logging.info("got new bytes after %.4f", time.time() - wait_start)
                 if not ffmpeg_proc:
                     logging.info("starting ffmpeg")
-                    ffmpeg_proc = await asyncio.create_subprocess_exec(*cmd.split(), stdin=PIPE)
+                    ffmpeg_proc = await asyncio.create_subprocess_exec(
+                        *cmd.split(), stdin=PIPE
+                    )
+                    asyncio.create_task(self.fps())
             except asyncio.TimeoutError:
                 logging.info("timed out waiting for new bytes, reusing previous frame")
             if last_bytes and ffmpeg_proc:
-                logging.info("writing bytes to ffmpeg")
                 assert ffmpeg_proc.stdin
                 ffmpeg_proc.stdin.write(last_bytes)
                 await ffmpeg_proc.stdin.drain()
+                frame_times.append(time.time())
+                logging.info("wrote bytes to ffmpeg.")
         logging.info("done")
         if ffmpeg_proc:
+
             await ffmpeg_proc.wait()
 
 

@@ -192,7 +192,10 @@ class Prompt(nn.Module):
         )
 
     def describe(self) -> None:
-        print(f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. ", end="")
+        print(repr(self), end="")
+
+    def __repr__(self) -> str:
+        return f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. "
 
 
 class ReactionPredictor(nn.Module):
@@ -260,10 +263,14 @@ class Generator:
 
     def synth(self, z: Tensor) -> Tensor:
         "turn z into an image by vector quantizing then decoding"
+        start = time.time()
+        logging.info("in synth")
         z_q = vector_quantize(
             z.movedim(1, 3), self.model.quantize.embedding.weight
         ).movedim(3, 1)
-        return clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
+        result = clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
+        print("exiting synth, elapsed: ", time.time() - start)
+        return result
 
     async def generate(self, args: "BetterNamespace") -> tuple[float, int]:
         "actually generate an image using args"
@@ -374,6 +381,7 @@ class Generator:
             prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
         ) -> "list[Prompt]":
             "figure out the prompts and weights to use this iteration"
+
             if not is_crossfade:
                 return prompts
             # realtime queue additions??
@@ -388,10 +396,8 @@ class Generator:
                 # first prompt gets less weight
                 waning_weight = float(first.weight) - 1 / fade
                 waxing_weight = min(1.0, float(second.weight) + 1 / fade)
-                prompts[0] = (
-                    Prompt(
-                        first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
-                    ),
+                prompts[0] = Prompt(
+                    first.embed, waning_weight, dwelt=first.dwelt, tag=first.tag
                 )
                 prompts[1] = Prompt(
                     second.embed, waxing_weight, dwelt=second.dwelt, tag=second.tag
@@ -402,6 +408,7 @@ class Generator:
                 # ???
                 # prompt = r.lpop("twitch_queue") # ???
                 # grab the next prompt if we have one, otherwise raise IndexError
+                print("checking next text")
                 next_text = (
                     prompt_queue.pop(0)
                     if prompt_queue
@@ -412,15 +419,25 @@ class Generator:
                         self.embed(next_text), weight=0, tag=next_text
                     ).to(device)
                     prompts.append(next_prompt)
+                    print("got next text")
             if i % args.display_freq == 0:
                 for prompt in prompts:
                     prompt.describe()
                 print()
+            print(prompts)
+            for prompt in prompts:
+                if not isinstance(prompt, Prompt):
+                    pdb.set_trace()
             return prompts
 
         # uses prompts, prompt_queue...
         async def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
             "synthesize an image and evaluate it for loss"
+
+            logging.info("await asyncio.to_thread(self.synth(z))")
+            out = await asyncio.to_thread(lambda: self.synth(z))
+            logging.info("awaiting synth thread done")
+
             out = self.synth(z)
             cutouts = make_cutouts(out)
             normalize = transforms.Normalize(
@@ -450,9 +467,7 @@ class Generator:
                 try:
                     losses.append(prompt(generated_image_embedding))
                 except:
-                    import pdb
-
-                    pdb.set_trace()
+                    print(prompt)
 
             if args.likely:
                 assert self.likely_loss
@@ -573,7 +588,7 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=10,
     seed=None,
-    max_iterations=300,
+    max_iterations=-1,
     fade=5,  # @param {type:"number"}
     dwell=5,  # @param {type: "number"}
     profile=False,  # cprofile
