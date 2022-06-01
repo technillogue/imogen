@@ -1,17 +1,24 @@
 #!/usr/bin/python3.9
 import asyncio
 import io
-import os
+import logging
 import time
+import sys
 from pathlib import Path
 from subprocess import PIPE, Popen
 from typing import Optional
 from PIL import Image
 import better_imagegen as clipart
-import logging
+from utils import get_secret, timer
+
+try:
+    sys.path.append("./Real-ESRGAN")
+    from realesrgan import RealESRGAN
+except:
+    RealESRGAN = None
 
 fps = 30
-dest = os.getenv("YOUTUBE_URL") or open("youtube_url").read()
+dest = "video.mp4"  # get_secret("YOUTUBE_URL")
 silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
 pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
 cmd = f"""ffmpeg -re {silence} \\
@@ -89,9 +96,10 @@ def log_task_result(
 
 class Streamer:
     frame_times: list[float] = []
+    exiting = False
 
-    async def fps(self):
-        while 1:
+    async def fps(self) -> None:
+        while not self.exiting:
             now = time.time()
             self.frame_times = [t for t in self.frame_times if now - t <= 1]
             logging.info(f"fps: {len(self.frame_times)}")
@@ -102,6 +110,7 @@ class Streamer:
     async def yolo(self) -> None:
         args = clipart.base_args
         generator = clipart.Generator(args)
+        upsampler = RealESRGAN() if RealESRGAN else None
         generate_task = asyncio.create_task(generator.generate(args))
         generate_task.add_done_callback(log_task_result)
         # to_thread??
@@ -115,13 +124,15 @@ class Streamer:
             # and crossfade between them until the following frame is available
             # unfortunately it's not known in advance how long that will be?
             # but you could have a slightly choppy predictive algorithm, maybe smoothed by 0.5
+            wait_start = time.time()
             try:
                 logging.info("waiting for next frame")
-                wait_start = time.time()
-                last_bytes = get_img_bytes(
-                    await asyncio.wait_for(generator.image_queue.get(), 0.2)
-                )
+                image = await asyncio.wait_for(generator.image_queue.get(), 0.2)
                 logging.info("got new bytes after %.4f", time.time() - wait_start)
+                with timer("upsampling?"):
+                    last_bytes = get_img_bytes(
+                        upsampler.predict(image) if upsampler else image
+                    )
                 if not ffmpeg_proc:
                     logging.info("starting ffmpeg")
                     ffmpeg_proc = await asyncio.create_subprocess_exec(
@@ -129,17 +140,23 @@ class Streamer:
                     )
                     asyncio.create_task(self.fps())
             except asyncio.TimeoutError:
-                logging.info("timed out waiting for new bytes, reusing previous frame")
+                logging.info(
+                    "timed out waiting for new bytes after %.4f, reusing previous frame",
+                    time.time() - wait_start,
+                )
             if last_bytes and ffmpeg_proc:
                 assert ffmpeg_proc.stdin
                 ffmpeg_proc.stdin.write(last_bytes)
                 await ffmpeg_proc.stdin.drain()
                 frame_times.append(time.time())
                 logging.info("wrote bytes to ffmpeg.")
+        self.exiting = True
         logging.info("done")
         if ffmpeg_proc:
-
-            await ffmpeg_proc.wait()
+            try:
+                await asyncio.wait_for(ffmpeg_proc.wait(), 2.0)
+            except asyncio.TimeoutError:
+                ffmpeg_proc.terminate()
 
 
 if __name__ == "__main__":

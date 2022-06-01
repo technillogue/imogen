@@ -1,13 +1,15 @@
 # Copyright (c) 2022 Sylvie Liberman
-import math
-import os
 import functools
 import logging
-from typing import Optional, cast
+import math
+import os
+import time
+from contextlib import contextmanager
+from typing import Iterator, Optional, cast
 import torch
+from PIL import Image
 from torch import Tensor
 from torch.nn import functional as F
-from PIL import Image
 
 
 @functools.cache  # don't load the same env more than once?
@@ -31,6 +33,14 @@ def load_secrets(env: Optional[str] = None, overwrite: bool = False) -> None:
         os.environ.update(new_env)
     except FileNotFoundError:
         pass
+
+
+@contextmanager
+def timer(msg: str) -> Iterator:
+    logging.debug("started %s", msg)
+    start_time = time.time()
+    yield
+    logging.info("done %s after %.4f", msg, time.time() - start_time)
 
 
 # TODO: split this into get_flag and get_secret; move all of the flags into fly.toml;
@@ -66,7 +76,9 @@ def ramp(ratio: float, width: int) -> Tensor:
     return torch.cat([-out[1:].flip([0]), out])[1:-1]
 
 
-def resample(input: Tensor, size: tuple[int, int], align_corners: bool = True) -> Tensor:
+def resample(
+    input: Tensor, size: tuple[int, int], align_corners: bool = True
+) -> Tensor:
     n, c, h, w = input.shape
     dh, dw = size
 

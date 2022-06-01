@@ -412,7 +412,7 @@ class Generator:
                 next_text = (
                     prompt_queue.pop(0)
                     if prompt_queue
-                    else (await redis.lpop("stream_queue") or b"").decode()
+                    else ""  # (await redis.lpop("stream_queue") or b"").decode()
                 )
                 if next_text:
                     next_prompt = Prompt(
@@ -491,7 +491,7 @@ class Generator:
             loss = sum(lossAll)
             if writer:
                 writer.add_scalar("loss/train", loss, i)
-            if i % args.display_freq == 0:
+            if i % args.max_iterations:  # display_freq == 0:
                 checkin(i, lossAll)
                 # this tells autograd to adjust all the weights based on this new loss
 
