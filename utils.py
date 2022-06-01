@@ -35,14 +35,6 @@ def load_secrets(env: Optional[str] = None, overwrite: bool = False) -> None:
         pass
 
 
-@contextmanager
-def timer(msg: str) -> Iterator:
-    logging.debug("started %s", msg)
-    start_time = time.time()
-    yield
-    logging.info("done %s after %.4f", msg, time.time() - start_time)
-
-
 # TODO: split this into get_flag and get_secret; move all of the flags into fly.toml;
 # maybe keep all the tomls and dockerfiles in a separate dir with a deploy script passing --config and --dockerfile explicitly
 def get_secret(key: str, env: Optional[str] = None) -> str:
@@ -54,6 +46,14 @@ def get_secret(key: str, env: Optional[str] = None) -> str:
     if secret.lower() in ("0", "false", "no"):
         return ""
     return secret
+
+
+@contextmanager
+def timer(msg: str) -> Iterator:
+    logging.debug("started %s", msg)
+    start_time = time.time()
+    yield
+    logging.info("done %s after %.4f", msg, time.time() - start_time)
 
 
 def sinc(x: Tensor) -> Tensor:

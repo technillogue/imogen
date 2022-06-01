@@ -7,6 +7,7 @@ import logging
 import pdb
 import sys
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional, Union
@@ -212,7 +213,11 @@ class ReactionPredictor(nn.Module):
         return 1 - self.predictor(generated_image_embedding).mean()
 
 
-redis = aioredis.from_url(utils.get_secret("REDIS_URL"))
+if utils.get_secret("REDIS_URL"):
+    redis = aioredis.from_url(utils.get_secret("REDIS_URL"))
+else:
+    logging.warning("no redis")
+    redis = None
 
 
 class Generator:
@@ -264,12 +269,12 @@ class Generator:
     def synth(self, z: Tensor) -> Tensor:
         "turn z into an image by vector quantizing then decoding"
         start = time.time()
-        logging.info("in synth")
+        logging.debug("in synth")
         z_q = vector_quantize(
             z.movedim(1, 3), self.model.quantize.embedding.weight
         ).movedim(3, 1)
         result = clamp_with_grad(self.model.decode(z_q).add(1).div(2), 0, 1)
-        print("exiting synth, elapsed: ", time.time() - start)
+        logging.debug("synth, elapsed: ", time.time() - start)
         return result
 
     async def generate(self, args: "BetterNamespace") -> tuple[float, int]:
@@ -404,7 +409,7 @@ class Generator:
                 )
             else:
                 # first prompt has zero weight, get rid of it
-                prompts.pop(0)
+                old_prompt = prompts.pop(0)
                 # ???
                 # prompt = r.lpop("twitch_queue") # ???
                 # grab the next prompt if we have one, otherwise raise IndexError
@@ -412,7 +417,9 @@ class Generator:
                 next_text = (
                     prompt_queue.pop(0)
                     if prompt_queue
-                    else ""  # (await redis.lpop("stream_queue") or b"").decode()
+                    else (await redis.lpop("stream_queue") or b"").decode()
+                    if redis
+                    else ""
                 )
                 if next_text:
                     next_prompt = Prompt(
@@ -420,6 +427,10 @@ class Generator:
                     ).to(device)
                     prompts.append(next_prompt)
                     print("got next text")
+                else:
+                    old_prompt.weight = torch.as_tensor(1.0)
+                    prompts.append(old_prompt)
+                    print("no next text, looping")
             if i % args.display_freq == 0:
                 for prompt in prompts:
                     prompt.describe()
@@ -434,9 +445,9 @@ class Generator:
         async def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
             "synthesize an image and evaluate it for loss"
 
-            logging.info("await asyncio.to_thread(self.synth(z))")
+            logging.debug("await asyncio.to_thread(self.synth(z))")
             out = await asyncio.to_thread(lambda: self.synth(z))
-            logging.info("awaiting synth thread done")
+            logging.debug("awaiting synth thread done")
 
             out = self.synth(z)
             cutouts = make_cutouts(out)
@@ -450,10 +461,11 @@ class Generator:
             if args.video:
                 # if we're doing a video we need every single frame
                 with torch.no_grad():
-                    logging.info("putting image on queue")
                     pil_image = TF.to_pil_image(out[0].cpu())
                     await self.image_queue.put(pil_image)
-                    logging.info("queue size: %s ", self.image_queue.qsize())
+                    logging.info(
+                        "put image on queue, queue size: %s ", self.image_queue.qsize()
+                    )
             losses = []
             # for visualizing cutout transforms:
             # for cutout in cutouts:
@@ -495,17 +507,17 @@ class Generator:
                 checkin(i, lossAll)
                 # this tells autograd to adjust all the weights based on this new loss
 
-            def opt_go_brr():
-                logging.info("inside opt_go_brr")
+            def opt_go_brr() -> None:
+                logging.debug("inside opt_go_brr")
                 start = time.time()
                 loss.backward()
                 opt.step()
-                print("exiting opt_go_brr, elapsed: ", time.time() - start)
+                logging.debug("exiting opt_go_brr, elapsed: ", time.time() - start)
 
             # unleash the GIL
-            logging.info("await asyncio.to_thread(opt_go_brr)")
+            logging.debug("await asyncio.to_thread(opt_go_brr)")
             await asyncio.to_thread(opt_go_brr)
-            logging.info("awaiting that thread done")
+            logging.debug("awaiting that thread done")
 
             with torch.no_grad():
                 # you have to make sure z isn't too big or too small
@@ -519,7 +531,8 @@ class Generator:
                 try:
                     loss = await train(i)
                     await asyncio.sleep(0.001)
-                except IndexError:
+                except IndexError as e:
+                    traceback.print_exc()
                     break
                 if i == args.max_iterations:
                     break
@@ -586,11 +599,11 @@ base_args = BetterNamespace(
     step_size=0.1,
     cutn=64,
     cut_pow=1.0,
-    display_freq=10,
+    display_freq=25,
     seed=None,
     max_iterations=-1,
-    fade=5,  # @param {type:"number"}
-    dwell=5,  # @param {type: "number"}
+    fade=50,  # @param {type:"number"}
+    dwell=50,  # @param {type: "number"}
     profile=False,  # cprofile
     video=True,
     likely=False,
@@ -600,5 +613,5 @@ base_args = BetterNamespace(
 
 if __name__ == "__main__":
     asyncio.run(
-        Generator(base_args).generate(base_args)
-    )  # .with_update({"max_iterations": 1}))
+        Generator(base_args).generate(base_args.with_update({"max_iterations": 1}))
+    )

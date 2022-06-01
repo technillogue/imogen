@@ -1,4 +1,4 @@
-#!/usr/bin/python3.9
+#utils.!/usr/bin/python3.9
 import asyncio
 import io
 import logging
@@ -8,6 +8,7 @@ from pathlib import Path
 from subprocess import PIPE, Popen
 from typing import Optional
 from PIL import Image
+import uvloop
 import better_imagegen as clipart
 from utils import get_secret, timer
 
@@ -18,14 +19,14 @@ except:
     RealESRGAN = None
 
 fps = 30
-dest = "video.mp4"  # get_secret("YOUTUBE_URL")
+dest = get_secret("YOUTUBE_URL")
 silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
 pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
 cmd = f"""ffmpeg -re {silence} \\
     {pipe} \\
     -f flv \\
     -pix_fmt yuvj420p \\
-    -max_muxing_queue_size 512
+    -max_muxing_queue_size 1024
     -x264-params keyint=48:min-keyint=48:scenecut=-1 \\
     -b:v 1000k \\
     -b:a 128k \\
@@ -33,7 +34,7 @@ cmd = f"""ffmpeg -re {silence} \\
     -acodec aac \\
     -vcodec libx264 \\
     -preset ultrafast \\
-    -crf 50 \\
+    -crf 28 \\
     {dest}
 """.replace(
     "\\\n", ""
@@ -110,11 +111,10 @@ class Streamer:
     async def yolo(self) -> None:
         args = clipart.base_args
         generator = clipart.Generator(args)
-        upsampler = RealESRGAN() if RealESRGAN else None
+        upsampler = RealESRGAN() if get_secret("UPSAMPLE") and RealESRGAN else None
         generate_task = asyncio.create_task(generator.generate(args))
+        # whole thing to a_thread??
         generate_task.add_done_callback(log_task_result)
-        # to_thread??
-        print("sleeping")
         await asyncio.sleep(1)
         ffmpeg_proc: Optional[asyncio.subprocess.Process] = None
         last_bytes: Optional[bytes] = None
@@ -163,6 +163,7 @@ if __name__ == "__main__":
     # run()
     # raise SystemExit
     try:
+        uvloop.install()
         asyncio.run(Streamer().yolo())
     except BrokenPipeError:
         pass
