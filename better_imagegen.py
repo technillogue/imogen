@@ -227,7 +227,7 @@ class Generator:
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        print("Using device:", self.device)
+        logging.info("Using device:", self.device)
         self.model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(
             self.device
         )
@@ -322,7 +322,7 @@ class Generator:
         # https://arxiv.org/abs/1412.6980
         opt = optim.Adam([z], lr=args.step_size)
 
-        print(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
+        logging.info(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
 
         slug = args.slug or mk_slug(args.prompts)
         try:
@@ -410,10 +410,7 @@ class Generator:
             else:
                 # first prompt has zero weight, get rid of it
                 old_prompt = prompts.pop(0)
-                # ???
-                # prompt = r.lpop("twitch_queue") # ???
-                # grab the next prompt if we have one, otherwise raise IndexError
-                print("checking next text")
+                logging.debug("checking next text")
                 next_text = ""
                 if prompt_queue:
                     next_text = prompt_queue.pop()
@@ -427,19 +424,13 @@ class Generator:
                         self.embed(next_text), weight=0, tag=next_text
                     ).to(device)
                     prompts.append(next_prompt)
-                    print("got next text")
+                    logging.info("got next text")
                 else:
                     old_prompt.weight = torch.as_tensor(1.0)
                     prompts.append(old_prompt)
-                    print("no next text, looping")
+                    logging.info("no next text, looping")
             if i % args.display_freq == 0:
-                for prompt in prompts:
-                    prompt.describe()
-                print()
-            print(prompts)
-            for prompt in prompts:
-                if not isinstance(prompt, Prompt):
-                    pdb.set_trace()
+                logging.info(prompts)
             return prompts
 
         # uses prompts, prompt_queue...
@@ -480,7 +471,7 @@ class Generator:
                 try:
                     losses.append(prompt(generated_image_embedding))
                 except:
-                    print(prompt)
+                    logging.info(prompt)
 
             if args.likely:
                 assert self.likely_loss
