@@ -15,7 +15,11 @@ RUN curl -L -o vqgan_imagenet_f16_16384.yaml 'https://heibox.uni-heidelberg.de/d
  && curl -L -o wikiart_16384.ckpt -C - 'http://eaidata.bmk.sh/data/Wikiart_16384/wikiart_f16_16384_8145600.ckpt'  \
  && curl -L -o wikiart_16384.yaml -C - 'http://eaidata.bmk.sh/data/Wikiart_16384/wikiart_f16_16384_8145600.yaml'
 
-# https://download.pytorch.org/models/vgg16-397923af.pth to /root/.cache/torch/hub/checkpoints/vgg16-397923af.pth
+FROM curlimages/curl as deps
+USER root
+RUN curl -L -o /vgg.pth https://download.pytorch.org/models/vgg16-397923af.pth
+RUN curl -L -o /vgg-lpips.pth https://heibox.uni-heidelberg.de/f/607503859c864bc1b30b/?dl=1 to 
+
 
 FROM ubuntu:hirsute
 WORKDIR /app
@@ -23,8 +27,10 @@ RUN mkdir -p /app/steps
 RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST" > /etc/timezone
 RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y python3 ffmpeg git
 COPY --from=models /app/vqgan_imagenet_f16_16384.yaml /app/vqgan_imagenet_f16_16384.ckpt /app/wikiart_16384.ckpt /app/wikiart_16384.yaml /app/
+COPY --from=deps /vgg.pth /root/.cache/torch/hub/checkpoints/vgg16-397923af.pth
+COPY --from=deps /vgg-lpips.pth /app/taming-transformers/taming/modules/autoencoder/lpips/vgg.pth
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
-RUN git clone https://github.com/openai/CLIP && git clone https://github.com/CompVis/taming-transformers
+RUN git clone https://github.com/openai/CLIP && git clone https://github.com/CompVis/taming-transformers && git clone https://github.com/technillogue/Real-ESRGAN
 COPY ./reaction_predictor.pth /app/
 COPY ./utils.py ./better_imagegen.py /app/ 
 RUN python3.9 better_imagegen.py || true

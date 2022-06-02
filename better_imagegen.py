@@ -227,7 +227,7 @@ class Generator:
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        logging.info("Using device:", self.device)
+        logging.info("Using device: %s", self.device)
         self.model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(
             self.device
         )
@@ -239,7 +239,7 @@ class Generator:
             .to(self.device)
         )
         self.image_queue: asyncio.Queue[Image] = asyncio.Queue()
-        self.ext_prompt_queue: asyncio.Queue[str] = asyncio.Queue()
+        self.frame_times: list[float] = []
 
     def same_model(self, new_args: "BetterNamespace") -> bool:
         "are the new args the same model as we have?"
@@ -322,7 +322,9 @@ class Generator:
         # https://arxiv.org/abs/1412.6980
         opt = optim.Adam([z], lr=args.step_size)
 
-        logging.info(f"using text prompt {args.prompts} and image prompt {args.image_prompts}")
+        logging.info(
+            f"using text prompt {args.prompts} and image prompt {args.image_prompts}"
+        )
 
         slug = args.slug or mk_slug(args.prompts)
         try:
@@ -431,8 +433,6 @@ class Generator:
                 logging.info(prompts)
             return prompts
 
-        frame_times = []
-
         # uses prompts, prompt_queue...
         async def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
             "synthesize an image and evaluate it for loss"
@@ -446,6 +446,7 @@ class Generator:
             normalize = transforms.Normalize(
                 mean=[0.48145466, 0.4578275, 0.40821073],
                 std=[0.26862954, 0.26130258, 0.27577711],
+                # https://download.pytorch.org/models/vgg16-397923af.pth to /root/.cache/torch/hub/checkpoints/vgg16-397923af.pth
             )
             generated_image_embedding = self.perceptor.encode_image(
                 normalize(cutouts)
@@ -581,7 +582,7 @@ base_args = BetterNamespace(
         "pink elephant in space",
         "cosmic sunrise with pegasus",
         "pastel fire sculpture",
-        "robots made of porcelain"
+        "robots made of porcelain",
     ],
     image_prompts=[],
     noise_prompt_weights=[],
@@ -601,12 +602,12 @@ base_args = BetterNamespace(
     dwell=100,  # @param {type: "number"}
     profile=False,  # cprofile
     video=True,
-    likely=False, 
+    likely=False,
     prod=False,
     slug=None,
 )
 
 if __name__ == "__main__":
     asyncio.run(
-        Generator(base_args).generate(base_args.with_update({"max_iterations": 1}))
+        Generator(base_args).generate(base_args.with_update({"max_iterations": 1, "size": [5, 5]}))
     )

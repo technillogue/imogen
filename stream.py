@@ -1,4 +1,4 @@
-#utils.!/usr/bin/python3.9
+# utils.!/usr/bin/python3.9
 import asyncio
 import io
 import logging
@@ -20,7 +20,7 @@ except:
 
 fps = 60
 dest = get_secret("YOUTUBE_URL")
-silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 b:a 128k"
+silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
 pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
 cmd = f"""ffmpeg -re {silence} \\
     {pipe} \\
@@ -28,8 +28,8 @@ cmd = f"""ffmpeg -re {silence} \\
     -pix_fmt yuvj420p \\
     -max_muxing_queue_size 1024
     -x264-params keyint=300:min-keyint=48:scenecut=-1 \\
+    -b:a 128k \\
     -b:v 1000k \\
-    - \\
     -ar 44100 \\
     -acodec aac \\
     -vcodec libx264 \\
@@ -103,15 +103,21 @@ class Streamer:
         while not self.exiting:
             now = time.time()
             self.frame_times = [t for t in self.frame_times if now - t <= 1]
-            self.generator.frame_times = [t for t in self.generator.frame_times if now - t <= 5]
+            self.generator.frame_times = [
+                t for t in self.generator.frame_times if now - t <= 5
+            ]
             avg_fps = len(self.generator.frame_times) / 5
-            logging.info(f"ffmpeg write fps: {len(self.frame_times)}; generate fps: {avg_fps}")
+            logging.info(
+                f"ffmpeg write fps: {len(self.frame_times)}; generate fps: {avg_fps}"
+            )
             await asyncio.sleep(1)
             if round(time.time() - now, 4) > 1:
                 logging.info("elapsed time between fps ticks: %.4f", time.time() - now)
 
     async def yolo(self) -> None:
-        args = clipart.base_args
+        args = clipart.base_args.with_update(
+            {"size": [640, 360]} if get_secret("UPSAMPLE") else {"size": [320, 180]}
+        )
         self.generator = clipart.Generator(args)
         upsampler = RealESRGAN() if get_secret("UPSAMPLE") and RealESRGAN else None
         generate_task = asyncio.create_task(self.generator.generate(args))

@@ -68,19 +68,20 @@ async def mgmt(request: web.Request) -> web.Response:
         elif action == "stop":
             out = await get_output("kubectl delete pod stream")
     out = out.replace("\n", "<br/>\n")
-    logs = (await get_output("kubectl logs stream")).replace("\n", "<br/>")
+    logs = (await get_output("kubectl logs --tail=100 stream")).replace("\n", "<br/>")
     body = f"""<!DOCTYPE HTML>
     <body style="font-family: monospace">
-    <div style="float: left; margin 5%;">
-        {logs}
-    </div>
-    <form>
-        <input type="submit" name="action" value="start" />
-        <input type="submit" name="action" value="stop" />
+    <form method="post">
+        <input type="submit" name="action" value="start"/><br/>
+        <input type="submit" name="action" value="stop"/><br/>
     </form>
     <div style="float: right; margin 5%;">
-        {out}
+        {out}<br/>
     </div>
+    <div style="float: left; margin 5%;">
+        {logs}<br/>
+    </div>
+    </body>
     """
     return web.Response(body=body, content_type="text/html")
 

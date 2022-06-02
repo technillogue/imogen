@@ -1,6 +1,6 @@
 # fly.toml file generated for stream-queue on 2022-06-01T22:36:47+01:00
 
-app = "stream-queue"
+app = "imogen-live"
 
 kill_signal = "SIGINT"
 kill_timeout = 5
