@@ -21,6 +21,7 @@ FROM python:3 as model
 RUN pip install gdown
 RUN gdown -O x4.pth 'https://drive.google.com/uc?id=1SGHdZAln4en65_NQeQY9UjchtkEF9f5F'
 
+FROM bitnami/kubectl:1.21.8 as kubectl
 
 FROM ubuntu:hirsute
 WORKDIR /app
@@ -29,6 +30,7 @@ RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST"
 RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y python3 ffmpeg git
 COPY --from=models /app/vqgan_imagenet_f16_16384.yaml /app/vqgan_imagenet_f16_16384.ckpt /app/
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
+COPY --from=kubectl /opt/bitnami/kubectl/bin/kubectl /usr/local/bin/
 RUN git clone https://github.com/openai/CLIP && git clone https://github.com/CompVis/taming-transformers && git clone https://github.com/technillogue/Real-ESRGAN
 COPY --from=model /x4.pth /app/Real-ESRGAN/weights/
 COPY ./reaction_predictor.pth /app/

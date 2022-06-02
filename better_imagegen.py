@@ -196,7 +196,7 @@ class Prompt(nn.Module):
         print(repr(self), end="")
 
     def __repr__(self) -> str:
-        return f"{self.tag}: dwell {self.dwelt}, weight {self.weight}. "
+        return f"{self.tag}: dwell {self.dwelt}, weight {self.weight}"
 
 
 class ReactionPredictor(nn.Module):
@@ -386,10 +386,8 @@ class Generator:
             prompts: "list[Prompt]", fade: int = 300, dwell: int = 300
         ) -> "list[Prompt]":
             "figure out the prompts and weights to use this iteration"
-
             if not is_crossfade:
                 return prompts
-            # realtime queue additions??
             if prompts[0].dwelt < dwell:
                 # we're still dwelling on the current prompt
                 prompts[0].dwelt += 1
@@ -433,6 +431,8 @@ class Generator:
                 logging.info(prompts)
             return prompts
 
+        frame_times = []
+
         # uses prompts, prompt_queue...
         async def ascend_txt(i: int, z: Tensor) -> list[Tensor]:
             "synthesize an image and evaluate it for loss"
@@ -455,6 +455,7 @@ class Generator:
                 with torch.no_grad():
                     pil_image = TF.to_pil_image(out[0].cpu())
                     await self.image_queue.put(pil_image)
+                    self.frame_times.append(time.time())
                     logging.info(
                         "put image on queue, queue size: %s ", self.image_queue.qsize()
                     )
@@ -577,12 +578,14 @@ class BetterNamespace:
 
 base_args = BetterNamespace(
     prompts=[
-        "pink elephant in space on fire",
-        "the girl reading this",
+        "pink elephant in space",
+        "cosmic sunrise with pegasus",
+        "pastel fire sculpture",
+        "robots made of porcelain"
     ],
     image_prompts=[],
     noise_prompt_weights=[],
-    size=[780 // 4, 480 // 4],
+    size=[480, 270],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -594,11 +597,11 @@ base_args = BetterNamespace(
     display_freq=25,
     seed=None,
     max_iterations=-1,
-    fade=50,  # @param {type:"number"}
-    dwell=50,  # @param {type: "number"}
+    fade=100,  # @param {type:"number"}
+    dwell=100,  # @param {type: "number"}
     profile=False,  # cprofile
     video=True,
-    likely=False,
+    likely=False, 
     prod=False,
     slug=None,
 )
