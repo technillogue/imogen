@@ -18,7 +18,7 @@ try:
 except:
     RealESRGAN = None
 
-fps = 60
+fps = 30
 dest = get_secret("YOUTUBE_URL")
 silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
 pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
@@ -27,7 +27,7 @@ cmd = f"""ffmpeg -re {silence} \\
     -f flv \\
     -pix_fmt yuvj420p \\
     -max_muxing_queue_size 1024
-    -x264-params keyint=300:min-keyint=48:scenecut=-1 \\
+    -x264-params keyint=120:min-keyint=30:scenecut=-1 \\
     -b:a 128k \\
     -b:v 1000k \\
     -ar 44100 \\

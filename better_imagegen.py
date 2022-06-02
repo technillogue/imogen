@@ -580,9 +580,9 @@ class BetterNamespace:
 base_args = BetterNamespace(
     prompts=[
         "pink elephant in space",
-        "cosmic sunrise with pegasus",
+#        "cosmic sunrise with pegasus",
         "pastel fire sculpture",
-        "robots made of porcelain",
+#        "robots made of porcelain",
     ],
     image_prompts=[],
     noise_prompt_weights=[],

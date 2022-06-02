@@ -28,9 +28,9 @@ RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST"
 RUN apt update && DEBIAN_FRONTEND="noninteractive" apt install -y python3 ffmpeg git
 COPY --from=models /app/vqgan_imagenet_f16_16384.yaml /app/vqgan_imagenet_f16_16384.ckpt /app/wikiart_16384.ckpt /app/wikiart_16384.yaml /app/
 COPY --from=deps /vgg.pth /root/.cache/torch/hub/checkpoints/vgg16-397923af.pth
-COPY --from=deps /vgg-lpips.pth /app/taming-transformers/taming/modules/autoencoder/lpips/vgg.pth
 COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
 RUN git clone https://github.com/openai/CLIP && git clone https://github.com/CompVis/taming-transformers && git clone https://github.com/technillogue/Real-ESRGAN
+COPY --from=deps /vgg-lpips.pth /app/taming-transformers/taming/modules/autoencoder/lpips/vgg.pth
 COPY ./reaction_predictor.pth /app/
 COPY ./utils.py ./better_imagegen.py /app/ 
 RUN python3.9 better_imagegen.py || true
