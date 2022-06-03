@@ -15,7 +15,7 @@ __pycache__
 **/*mp4
 **/*mov
 **/*pth
-!reaction_predictor.pth
 **/runs
 **/wandb
 **/*ipynb
+!**/reaction_predictor.pth

@@ -1,13 +1,16 @@
 # utils.!/usr/bin/python3.9
 import asyncio
 import io
+import json
 import logging
+import re
 import time
 import sys
 from pathlib import Path
 from subprocess import PIPE, Popen
 from typing import Optional
 from PIL import Image
+import requests
 import uvloop
 import better_imagegen as clipart
 from utils import get_secret, timer
@@ -39,6 +42,16 @@ cmd = f"""ffmpeg -re {silence} \\
 """.replace(
     "\\\n", ""
 ).strip()
+
+
+def post_admin(data: str) -> None:
+    r = requests.post(
+        "https://getpost.bitsandpieces.io/post",
+        {"upfile": data},
+        headers={"User-Agent": "curl/"},
+    )
+    link = re.search(r"https://getpost.*", r.text).group(0)
+    requests.post("https://whispr.fly.dev/user/+16176088864", link)
 
 
 def run() -> None:
@@ -102,13 +115,10 @@ class Streamer:
     async def fps(self) -> None:
         while not self.exiting:
             now = time.time()
-            self.frame_times = [t for t in self.frame_times if now - t <= 1]
-            self.generator.frame_times = [
-                t for t in self.generator.frame_times if now - t <= 5
-            ]
-            avg_fps = len(self.generator.frame_times) / 5
+            write_fps = len([t for t in self.frame_times if now - t <= 1])
+            avg_fps = len([t for t in self.generator.frame_times if now - t <= 5]) / 5
             logging.info(
-                f"ffmpeg write fps: {len(self.frame_times)}; generate fps: {avg_fps}"
+                f"ffmpeg write fps: {write_fps}; generate fps: {avg_fps}"
             )
             await asyncio.sleep(1)
             if round(time.time() - now, 4) > 1:
@@ -160,6 +170,11 @@ class Streamer:
                 logging.info("wrote bytes to ffmpeg.")
         self.exiting = True
         logging.info("done")
+        post_admin(
+            json.dumps(
+                {"gen_frates": self.generator.frame_times, "ffmpeg_writes": frame_times}
+            )
+        )
         if ffmpeg_proc:
             try:
                 await asyncio.wait_for(ffmpeg_proc.wait(), 2.0)
