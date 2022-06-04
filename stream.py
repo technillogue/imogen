@@ -117,12 +117,19 @@ class Streamer:
             now = time.time()
             write_fps = len([t for t in self.frame_times if now - t <= 1])
             avg_fps = len([t for t in self.generator.frame_times if now - t <= 5]) / 5
-            logging.info(
-                f"ffmpeg write fps: {write_fps}; generate fps: {avg_fps}"
-            )
+            logging.info(f"ffmpeg write fps: {write_fps}; generate fps: {avg_fps}")
             await asyncio.sleep(1)
             if round(time.time() - now, 4) > 1:
                 logging.info("elapsed time between fps ticks: %.4f", time.time() - now)
+            if round(time.time(), 1) % 120 < 1:
+                post_admin(
+                    json.dumps(
+                        {
+                            "gen_frates": self.generator.frame_times,
+                            "ffmpeg_writes": self.frame_times,
+                        }
+                    )
+                )
 
     async def yolo(self) -> None:
         args = clipart.base_args.with_update(
@@ -136,7 +143,6 @@ class Streamer:
         await asyncio.sleep(1)
         ffmpeg_proc: Optional[asyncio.subprocess.Process] = None
         last_bytes: Optional[bytes] = None
-        frame_times = []
         while not generate_task.done():
             # potentially, we could delay starting the stream until we have the first *two* frames,
             # and crossfade between them until the following frame is available
@@ -156,7 +162,7 @@ class Streamer:
                     ffmpeg_proc = await asyncio.create_subprocess_exec(
                         *cmd.split(), stdin=PIPE
                     )
-                    asyncio.create_task(self.fps())
+                    asyncio.create_task(self.fps()).add_done_callback(log_task_result)
             except asyncio.TimeoutError:
                 logging.info(
                     "timed out waiting for new bytes after %.4f, reusing previous frame",
@@ -166,13 +172,16 @@ class Streamer:
                 assert ffmpeg_proc.stdin
                 ffmpeg_proc.stdin.write(last_bytes)
                 await ffmpeg_proc.stdin.drain()
-                frame_times.append(time.time())
+                self.frame_times.append(time.time())
                 logging.info("wrote bytes to ffmpeg.")
         self.exiting = True
         logging.info("done")
         post_admin(
             json.dumps(
-                {"gen_frates": self.generator.frame_times, "ffmpeg_writes": frame_times}
+                {
+                    "gen_frates": self.generator.frame_times,
+                    "ffmpeg_writes": self.frame_times,
+                }
             )
         )
         if ffmpeg_proc:
