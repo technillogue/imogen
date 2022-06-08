@@ -231,6 +231,7 @@ class Generator:
         self.model = load_vqgan_model(args.vqgan_config, args.vqgan_checkpoint).to(
             self.device
         )
+        logging.info("loaded model")
         # perceptor is CLIP, it calculates the loss between generated image and text prompt
         self.perceptor = (
             clip.load(args.clip_model, jit=False)[0]
@@ -597,7 +598,7 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=25,
     seed=None,
-    max_iterations=-1,
+    max_iterations=1000,
     fade=100,  # @param {type:"number"}
     dwell=100,  # @param {type: "number"}
     profile=False,  # cprofile

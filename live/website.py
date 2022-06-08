@@ -18,7 +18,7 @@ if kube_cred:
 html = """
 <!DOCTYPE HTML>
 <iframe width="1280" height="720"
-    src="https://www.youtube.com/embed/live_stream?channel=UC_ViIZpK8aLEM_DKHO7W1YQ"
+    src="https://www.youtube.com/embed/live_stream?channel=UC_ViIZpK8aLEM_DKHO7W1YQ&autoplay=1"
     frameborder="0" allowfullscreen="" style="float: left;">
 </iframe>
 <div style = "margin: 5%; float: right">

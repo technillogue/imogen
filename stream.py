@@ -1,5 +1,6 @@
 # utils.!/usr/bin/python3.9
 import asyncio
+import cProfile
 import io
 import json
 import logging
@@ -21,16 +22,16 @@ try:
 except:
     RealESRGAN = None
 
-fps = 30
+fps = 60
 dest = get_secret("YOUTUBE_URL")
 silence = "-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100"
-pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 5 -i - -r {fps}"""
+pipe = f"""-y -thread_queue_size 1024 -analyzeduration 60 -f image2pipe -vcodec bmp -r 2 -i - -r {fps}"""
 cmd = f"""ffmpeg -re {silence} \\
     {pipe} \\
     -f flv \\
     -pix_fmt yuvj420p \\
     -max_muxing_queue_size 1024
-    -x264-params keyint=120:min-keyint=30:scenecut=-1 \\
+    -x264-params keyint=240:min-keyint=60:scenecut=-1 \\
     -b:a 128k \\
     -b:v 1000k \\
     -ar 44100 \\
@@ -47,7 +48,7 @@ cmd = f"""ffmpeg -re {silence} \\
 def post_admin(data: str) -> None:
     r = requests.post(
         "https://getpost.bitsandpieces.io/post",
-        {"upfile": data},
+        data={"upfile": data},
         headers={"User-Agent": "curl/"},
     )
     link = re.search(r"https://getpost.*", r.text).group(0)
@@ -121,7 +122,7 @@ class Streamer:
             await asyncio.sleep(1)
             if round(time.time() - now, 4) > 1:
                 logging.info("elapsed time between fps ticks: %.4f", time.time() - now)
-            if round(time.time(), 1) % 120 < 1:
+            if round(time.time(), 1) % 600 < 1:
                 post_admin(
                     json.dumps(
                         {
@@ -151,7 +152,7 @@ class Streamer:
             wait_start = time.time()
             try:
                 logging.debug("waiting for next frame")
-                image = await asyncio.wait_for(self.generator.image_queue.get(), 0.2)
+                image = await asyncio.wait_for(self.generator.image_queue.get(), 0.5)
                 logging.info("got new bytes after %.4f", time.time() - wait_start)
                 with timer("upsampling?"):
                     last_bytes = get_img_bytes(
@@ -196,6 +197,12 @@ if __name__ == "__main__":
     # raise SystemExit
     try:
         uvloop.install()
-        asyncio.run(Streamer().yolo())
+        with cProfile.Profile() as profiler:
+            asyncio.run(Streamer().yolo())
+        buf = io.StringIO()
+        profiler.dump_stats(buf)
+        buf.seek(0)
+        post_admin(buf.read())
+        logging.info("sent profiling info to admin")
     except BrokenPipeError:
         pass
