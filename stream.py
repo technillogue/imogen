@@ -32,7 +32,7 @@ cmd = f"""ffmpeg -re {silence} \\
     -pix_fmt yuvj420p \\
     -max_muxing_queue_size 1024
     -x264-params keyint=240:min-keyint=60:scenecut=-1 \\
-    -b:a 128k \\
+    -b:a 128k \\ 
     -b:v 1000k \\
     -ar 44100 \\
     -acodec aac \\
@@ -43,6 +43,11 @@ cmd = f"""ffmpeg -re {silence} \\
 """.replace(
     "\\\n", ""
 ).strip()
+
+# -use_wallclock_as_timestamps 1
+# -filter:v setpts='PTS-STARTPTS'
+# -filter:v setpts='time(0)'???
+
 
 
 def post_admin(data: str) -> None:
