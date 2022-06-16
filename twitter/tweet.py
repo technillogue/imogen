@@ -35,12 +35,15 @@ class Prompt:
     prompt: str
     filepath: str
 
+# where not params::jsonb ? 'nopost'
 
 def get_prompt() -> tuple[Optional[str], Optional[str]]:
     """Gets the fairiest prompt of them all, the one who got the most reacts form all the land"""
     conn = psycopg.connect(utils.get_secret("DATABASE_URL"), autocommit=True)
     ret = conn.execute(
         """select prompt, filepath from prompt_queue where now() - inserted_ts < '1 hour'
+        and not params::jsonb ? 'nopost'
+        and filepath is not null
         order by map_len(reaction_map) desc, loss asc limit 1;"""
     ).fetchone()
     logging.info(ret)
