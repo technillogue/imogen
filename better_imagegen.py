@@ -29,6 +29,9 @@ from utils import resample, resize_image
 sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
 
+sys.path.append("./predict")
+from likely_trainer import Likely
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 version = "0.1"
@@ -202,6 +205,7 @@ class Prompt(nn.Module):
 class ReactionPredictor(nn.Module):
     def __init__(self) -> None:
         super().__init__()
+
         self.predictor = torch.load(
             "predict/likely.pth",
             map_location="cuda:0" if torch.cuda.is_available() else "cpu",
@@ -210,7 +214,7 @@ class ReactionPredictor(nn.Module):
     def forward(self, generated_image_embedding: Tensor) -> Tensor:
         # image_embedding is usually [64, 512]
         # predictor returns 1 if it would get reactions, but we want 0 to be good
-        return 1 - self.predictor(generated_image_embedding).mean()
+        return 1 - self.predictor.predict_wide(generated_image_embedding).mean()
 
 
 if utils.get_secret("REDIS_URL"):
@@ -469,7 +473,6 @@ class Generator:
 
             if args.init_weight:
                 losses.append(F.mse_loss(z, z_orig) * args.init_weight / 2)
-
             for prompt in await crossfade_prompts(prompts, args.fade, args.dwell):
                 try:
                     losses.append(prompt(generated_image_embedding))
@@ -478,9 +481,10 @@ class Generator:
 
             if args.likely:
                 assert self.likely_loss
+                text_embed = prompts[0].embed[0] if prompts else torch.zeros(512).to(device)
                 massaged = torch.cat(
                     [
-                        torch.cat([prompts[0].embed[0], cutout])
+                        torch.cat([text_embed, cutout]).unsqueeze(0)
                         for cutout in generated_image_embedding
                     ]
                 )
@@ -579,15 +583,10 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=[
-        "pink elephant in space",
-#        "cosmic sunrise with pegasus",
-        "pastel fire sculpture",
-#        "robots made of porcelain",
-    ],
+    prompts=["cool hacker girl with club mate"],
     image_prompts=[],
     noise_prompt_weights=[],
-    size=[480, 270],
+    size=[780, 480],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -598,17 +597,19 @@ base_args = BetterNamespace(
     cut_pow=1.0,
     display_freq=25,
     seed=None,
-    max_iterations=1000,
+    max_iterations=400,
     fade=100,  # @param {type:"number"}
     dwell=100,  # @param {type: "number"}
     profile=False,  # cprofile
-    video=True,
-    likely=False,
+    video=False,
+    likely=True,
     prod=False,
     slug=None,
 )
 
 if __name__ == "__main__":
     asyncio.run(
-        Generator(base_args).generate(base_args.with_update({"max_iterations": 1, "size": [5, 5]}))
+        Generator(base_args).generate(
+            base_args  # .with_update()#{"max_iterations": 1, "size": [5, 5]})
+        )
     )

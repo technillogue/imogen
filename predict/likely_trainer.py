@@ -4,7 +4,8 @@ from types import SimpleNamespace
 from typing import Any, Optional, Union, NewType, TypeVar
 import torch
 import tqdm
-import wandb
+
+# import wandb
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
 import postnet
@@ -13,9 +14,7 @@ from core import ImgPrompt, EmbedPrompt, Prompt
 from v2postnet import massage_actual, massage_embeds, print_once, clipboard
 
 
-import wandb
-
-wandb.init(project="likely", entity="technillogue")
+# wandb.init(project="likely", entity="technillogue")
 
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -75,7 +74,7 @@ class MultiheadedSelfAttention(nn.Module):
 config = SimpleNamespace(
     img_batch=2, img_epoch=30, text_batch=32, text_epoch=12, opt="Adam", lr=1e-5
 )
-wandb.config = config.__dict__
+# wandb.config = config.__dict__
 
 
 class Likely(nn.Module):
@@ -90,7 +89,7 @@ class Likely(nn.Module):
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
             nn.Dropout(p=0.05),
-            # MultiheadedSelfAttention(256),
+            # MultiheadedSelfAttention(512),
             # nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
@@ -202,8 +201,9 @@ class LikelyTrainer:
     def train_text(self, batch: list[Prompt]) -> Scalar:
         double = False
         if double:
+            right = torch.zeros([1, 512]) if True else prompt.embed
             embeds = torch.cat(
-                [torch.cat([prompt.embed, prompt.embed], dim=1) for prompt in batch]
+                [torch.cat([prompt.embed, right], dim=1) for prompt in batch]
             )
             prediction = self.net.predict_wide(embeds)
         else:
@@ -242,12 +242,13 @@ class LikelyTrainer:
             opt.step()
             writer.add_scalar("loss/train", sum(losses) / len(losses), i)  # type: ignore
             info["step"] = sum(losses) / len(losses)
-            wandb.log({"loss": info})
+            # wandb.log({"loss": info})
             if (i + 1) % 50 == 0:
                 pbar.write(f"batch {i} loss: {round(sum(losses)/len(losses), 4)}")
         writer.flush()  # type: ignore
         print("overall train loss: ", round(sum(losses) / len(losses), 4))
         torch.save(self.net, "likely.pth")
+        print("saved")
         return self.net
 
 
@@ -367,14 +368,15 @@ def main():
     # return trainer
 
 
-COMMENT = input("comment for run> ")
-test_losses = [main() for i in tqdm.trange(1, desc="runs")]
-stats = {
-    "mean": statistics.mean(test_losses),
-    "stdev": statistics.stdev(test_losses),
-    "min": min(test_losses),
-}
-msg = COMMENT + ":\n" + " ".join(f"{k}: {round(v, 4)}" for k, v in stats.items())
-print(msg)
-clipboard(msg)
-print("\a")  # bell
+if __name__ == "__main__":
+    COMMENT = input("comment for run> ")
+    test_losses = [main() for i in tqdm.trange(1, desc="runs")] + [0]
+    stats = {
+        "mean": statistics.mean(test_losses),
+        "stdev": statistics.stdev(test_losses),
+        "min": min(test_losses),
+    }
+    msg = COMMENT + ":\n" + " ".join(f"{k}: {round(v, 4)}" for k, v in stats.items())
+    print(msg)
+    clipboard(msg)
+    print("\a")  # bell

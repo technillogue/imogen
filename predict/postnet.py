@@ -5,6 +5,7 @@ import torch
 import tqdm
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
+import sklearn
 from clip import clip
 from core import Prompt
 from torch.cuda.amp import autocast
@@ -21,6 +22,7 @@ def init_weights(m: nn.Module) -> None:
         if m.bias is not None:
             m.bias.data.fill_(0.01)
 
+power_transform = sklearn.preprocessing.PowerTransformer
 
 def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     writer = SummaryWriter() #comment=input("comment for run> "))  # type: ignore
@@ -42,7 +44,7 @@ def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
     net.apply(init_weights)
     opt = torch.optim.Adam(net.parameters(), lr=1e-4)
 
-    loss_fn = nn.L1Loss()
+    loss_fn = nn.MSELoss()
     epochs = 10
     batch_size = 10
     for prompt in prompts:
@@ -196,7 +198,7 @@ def train_prod() -> None:
 
 
 if __name__ == "__main__":
-    test_losses = [main(None) for i in tqdm.trange(5, desc="runs")]
+    test_losses = [main(None) for i in tqdm.trange(1, desc="runs")] + [0]
     stats = {
         "mean": statistics.mean(test_losses),
         "stdev": statistics.stdev(test_losses),
