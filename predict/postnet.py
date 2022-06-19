@@ -5,11 +5,12 @@ import torch
 import tqdm
 from torch import Tensor, nn
 from torch.utils.tensorboard import SummaryWriter
-import sklearn
+from sklearn import preprocessing
 from clip import clip
 from core import Prompt
 from torch.cuda.amp import autocast
-#from v2postnet import Likely
+
+# from v2postnet import Likely
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -22,12 +23,23 @@ def init_weights(m: nn.Module) -> None:
         if m.bias is not None:
             m.bias.data.fill_(0.01)
 
-power_transform = sklearn.preprocessing.PowerTransformer
+
+class Gaussify(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # self.power_transform = preprocessing.PowerTransformer()
+
+    def forward(self, x) -> Tensor:
+        return (x - x.mean()) / x.std()
+        # detached = x.cpu().numpy()
+        # return Tensor(self.power_transform.fit_transform(detached)).to(x.device)
+
 
 def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:
-    writer = SummaryWriter() #comment=input("comment for run> "))  # type: ignore
+    writer = SummaryWriter()  # comment=input("comment for run> "))  # type: ignore
     if not net:
         net = nn.Sequential(
+            Gaussify(),
             nn.Linear(512, 512),  # fc1
             nn.ReLU(),
             # nn.LayerNorm(512),
@@ -173,9 +185,10 @@ def validate(prompts: list[Prompt], net: Optional[nn.Module] = None) -> float:
 
 
 # fresh-ish data, dropout, no layernorm, batch 10 epoch 10
-#mean: 0.4106 stdev: 0.0103 min: 0.4009
-#layernorm
+# mean: 0.4106 stdev: 0.0103 min: 0.4009
+# layernorm
 # mean: 0.4194 stdev: 0.0078 min: 0.4133
+
 
 def main(net) -> float:
     prompts = torch.load("text_prompts.pth")  # type: ignore
@@ -187,7 +200,7 @@ def main(net) -> float:
     net = train(net, list(train_set))
     net.eval()
     return validate(list(valid_set), net)
-    #return net
+    # return net
 
 
 def train_prod() -> None:
