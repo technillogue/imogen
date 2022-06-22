@@ -1,5 +1,6 @@
 import random
 import statistics
+import logging
 from types import SimpleNamespace
 from typing import Any, Optional, Union, NewType, TypeVar
 import torch
@@ -13,7 +14,10 @@ import v2postnet
 from core import ImgPrompt, EmbedPrompt, Prompt
 from v2postnet import massage_actual, massage_embeds, print_once, clipboard
 
+from functools import partialmethod
 
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+logging.getLogger().setLevel("INFO")
 # wandb.init(project="likely", entity="technillogue")
 
 
@@ -47,20 +51,21 @@ class MultiheadedSelfAttention(nn.Module):
         self.proj_dropout = nn.Dropout(proj_dropout)
 
     def forward(self, x):
+        logging.info("x.shape: %s", x.shape)
         B, N, C = x.shape
-        qkv = (
-            self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
-            .permute(
-                2,  # qkv
-                0,  # batch
-                3,  # channel
-                1,  # num_heads
-                4,  # embed_dim
-            )
+        qkv_output = self.qkv(x)
+        logging.info("qkv_output.shape: %s", qkv_output.shape)
+        qkv_reshaped = qkv_output.reshape(B, N, 3, self.num_heads, C // self.num_heads)
+        logging.info("qkv_reshaped.shape: %s", qkv_reshaped.shape)
+        qkv = qkv_reshaped.permute(
+            2,  # qkv
+            0,  # batch
+            3,  # channel
+            1,  # num_heads
+            4,  # embed_dim
         )
         q, k, v = torch.chunk(qkv, 3)
-
+        logging.info("q.shape: %s", q.shape)
         attn = torch.bmm(q, k.transpose(-2, -1)) * self.scale  # <q,k> / sqrt(d)
         attn.softmax(dim=-1)  # Softmax over embedding dim
         attn = self.attn_dropout(attn)
@@ -72,25 +77,35 @@ class MultiheadedSelfAttention(nn.Module):
 
 
 config = SimpleNamespace(
-    img_batch=2, img_epoch=30, text_batch=32, text_epoch=12, opt="Adam", lr=1e-5
+    img_batch=4, img_epoch=10, text_batch=64, text_epoch=4, opt="Adam", lr=1e-5
 )
 # wandb.config = config.__dict__
+
+
+class Gaussify(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # self.power_transform = preprocessing.PowerTransformer()
+
+    def forward(self, x) -> Tensor:
+        return (x - x.mean()) / x.std()
 
 
 class Likely(nn.Module):
     def __init__(self) -> None:
         super().__init__()
+        self.gaus = Gaussify()
         self.wide_projection = nn.Linear(1024, 512)
         self.narrow_projection = nn.Linear(512, 512)
         self.net = nn.Sequential(
             nn.ReLU(),
-            # nn.LayerNorm(512),
+            nn.LayerNorm(512),
             nn.Dropout(p=0.05),
             nn.Linear(512, 512),  # fc2
             nn.ReLU(),
             nn.Dropout(p=0.05),
-            # MultiheadedSelfAttention(512),
-            # nn.Dropout(p=0.05),
+            MultiheadedSelfAttention(512),
+            nn.Dropout(p=0.05),
             nn.Linear(512, 256),  # fc3_256
             nn.ReLU(),
             nn.Dropout(p=0.1),
@@ -100,13 +115,15 @@ class Likely(nn.Module):
         self.apply(postnet.init_weights)
 
     def predict_text(self, text_embed: ClipEmbed) -> Scalar:
-        return self.net(self.narrow_projection(text_embed))
+        logging.info("predicting narrow")
+        return self.net(self.narrow_projection(self.gaus(text_embed)))
 
     def predict_wide(self, wide_embed: WideEmbed) -> Scalar:
         """
         wide_embed: Tensor[1024], [batch_size, 1024]
         """
-        return self.net(self.wide_projection(wide_embed))
+        logging.info("predicting wide")
+        return self.net(self.wide_projection(self.gaus(wide_embed)))
 
     forward = predict_text
 

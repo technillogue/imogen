@@ -30,7 +30,7 @@ sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
 
 sys.path.append("./predict")
-from likely_trainer import Likely
+from likely_trainer import Likely, Gaussify
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -346,6 +346,7 @@ class Generator:
             out = self.synth(z)
             TF.to_pil_image(out[0].cpu()).save(f"output/{slug}/progress.png")
 
+        # torch.Tensor([[1.0] * 512])
         prompts = [
             Prompt(self.embed(text), weight=weight, tag=text).to(device)
             for text, weight in zip(args.prompts, (1.0, 0.0))
@@ -481,7 +482,9 @@ class Generator:
 
             if args.likely:
                 assert self.likely_loss
-                text_embed = prompts[0].embed[0] if prompts else torch.zeros(512).to(device)
+                text_embed = (
+                    prompts[0].embed[0] if prompts else torch.zeros(512).to(device)
+                )
                 massaged = torch.cat(
                     [
                         torch.cat([text_embed, cutout]).unsqueeze(0)
@@ -583,10 +586,10 @@ class BetterNamespace:
 
 
 base_args = BetterNamespace(
-    prompts=["cool hacker girl with club mate"],
+    prompts=["dog"],
     image_prompts=[],
     noise_prompt_weights=[],
-    size=[780, 480],
+    size=[780 // 2, 480 // 2],
     init_image=None,
     init_weight=0.0,
     clip_model="ViT-B/32",
@@ -603,7 +606,7 @@ base_args = BetterNamespace(
     profile=False,  # cprofile
     video=False,
     likely=True,
-    prod=False,
+    prod=True,
     slug=None,
 )
 

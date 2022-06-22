@@ -115,13 +115,15 @@ def massage(prompt: ImgPrompt) -> tuple[Tensor, Tensor]:
 
 
 def massage_embeds(prompt: ImgPrompt) -> Tensor:
-    text = prompt.embed.to(device).reshape([512]).to(torch.float32).to(device)
+    text = prompt.embed.reshape([512]).to(torch.float32).to(device)
     return torch.cat(
         [
             torch.cat([text, cutout]).unsqueeze(0)
             for cutout in prompt.image_embed.to(device)
         ]
     ).to(device)
+    import pdb
+    pdb.set_trace()
 
 
 def massage_actual(prompt: ImgPrompt) -> Tensor:
