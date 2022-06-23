@@ -12,9 +12,9 @@ spec:
       restartPolicy: Never
       containers:
       - name: dalle
-        image: technillogue/dalle-mini:0.0.1
-        command: ["/usr/bin/sleep"]
-        args: ["1h"]
+        image: technillogue/dalle-mini:0.0.6
+#        command: ["/usr/bin/sleep"]
+        args: ["import torch"]
         resources:
           limits:
             cpu: 4
@@ -55,8 +55,8 @@ spec:
               - key: gpu.nvidia.com/class
                 operator: In
                 values:
-                  - A40
-                  # - Tesla_V100_NVLINK
+                  # - A40
+                  - Tesla_V100_NVLINK
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 20
               preference:
@@ -64,4 +64,4 @@ spec:
                   - key: gpu.nvidia.com/class
                     operator: In
                     values:
-                      - A40
+                      - Tesla_V100_NVLINK

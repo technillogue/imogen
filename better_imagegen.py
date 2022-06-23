@@ -491,7 +491,8 @@ class Generator:
                         for cutout in generated_image_embedding
                     ]
                 )
-                losses.append(self.likely_loss(massaged))
+                # break this out into a variable
+                losses.append(self.likely_loss(massaged) * 0.7)
             if not losses:
                 raise IndexError
             return losses

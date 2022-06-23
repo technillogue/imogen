@@ -15,7 +15,7 @@ import requests
 import uvloop
 import better_imagegen as clipart
 from utils import get_secret, timer
-
+from likely_trainer import Likely, Gaussify
 try:
     sys.path.append("./Real-ESRGAN")
     from realesrgan import RealESRGAN
@@ -139,7 +139,7 @@ class Streamer:
 
     async def yolo(self) -> None:
         args = clipart.base_args.with_update(
-            {"size": [640, 360]} if get_secret("UPSAMPLE") else {"size": [320, 180]}
+            {"size": [640, 360]} if get_secret("UPSAMPLE") else {"size": [320, 180], "likely": True}
         )
         self.generator = clipart.Generator(args)
         upsampler = RealESRGAN() if get_secret("UPSAMPLE") and RealESRGAN else None
