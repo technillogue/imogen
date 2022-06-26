@@ -46,7 +46,7 @@ tee = subprocess.Popen(["tee", "-a", "fulllog.txt"], stdin=subprocess.PIPE)
 os.dup2(tee.stdin.fileno(), sys.stdout.fileno())  # type: ignore
 os.dup2(tee.stdin.fileno(), sys.stderr.fileno())  # type: ignore
 
-admin_signal_url = "https://imogen-renaissance.fly.dev"
+admin_signal_url = "https://imogen.fly.dev"
 
 
 def mk_slug(text: Union[str, list[str]], _time: str = "") -> str:
@@ -192,6 +192,7 @@ def main() -> None:
             # try to claim
             prompt = get_prompt(conn)
             if not prompt:
+                time.sleep(60)
                 stop()
                 continue
             logging.info("got prompt: %s", prompt)

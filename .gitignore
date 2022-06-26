@@ -18,3 +18,5 @@ __pycache__
 **/runs
 **/wandb
 **/*ipynb
+**/*csv
+**/*log*
