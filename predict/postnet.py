@@ -4,8 +4,8 @@ from typing import Optional
 import torch
 import tqdm
 from torch import Tensor, nn
-from torch.utils.tensorboard import SummaryWriter
-from sklearn import preprocessing
+#from torch.utils.tensorboard import SummaryWriter
+#from sklearn import preprocessing
 from clip import clip
 from core import Prompt
 from torch.cuda.amp import autocast
@@ -23,16 +23,6 @@ def init_weights(m: nn.Module) -> None:
         if m.bias is not None:
             m.bias.data.fill_(0.01)
 
-
-class Gaussify(nn.Module):
-    def __init__(self):
-        super().__init__()
-        # self.power_transform = preprocessing.PowerTransformer()
-
-    def forward(self, x) -> Tensor:
-        return (x - x.mean()) / x.std()
-        # detached = x.cpu().numpy()
-        # return Tensor(self.power_transform.fit_transform(detached)).to(x.device)
 
 
 def train(net: Optional[nn.Sequential], prompts: list[Prompt]) -> nn.Sequential:

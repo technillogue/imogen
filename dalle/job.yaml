@@ -1,5 +1,5 @@
 apiVersion: batch/v1
-kind: Job
+kind: Pod
 metadata:
   name: dalle
   namespace: tenant-mobilecoin-imogen
@@ -12,7 +12,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: dalle
-        image: technillogue/dalle-mini:0.0.6
+        image: technillogue/dalle-mini:0.0.5
 #        command: ["/usr/bin/sleep"]
         args: ["import torch"]
         resources:

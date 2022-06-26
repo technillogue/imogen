@@ -32,7 +32,7 @@ COPY --from=libbuilder /app/venv/lib/python3.9/site-packages /app/
 RUN git clone https://github.com/openai/CLIP && git clone https://github.com/CompVis/taming-transformers && git clone https://github.com/technillogue/Real-ESRGAN
 COPY --from=deps /vgg-lpips.pth /app/taming-transformers/taming/modules/autoencoder/lpips/vgg.pth
 COPY ./reaction_predictor.pth /app/
-COPY ./utils.py ./better_imagegen.py /app/ 
+COPY ./utils.py ./better_imagegen.py ./predict/shared_model.py /app/ 
 RUN python3.9 better_imagegen.py || true
 COPY ./CHANGELOG.md ./mk_video.py ./postgres_jobs.py /app/
 ENTRYPOINT ["/usr/bin/python3", "/app/postgres_jobs.py"]

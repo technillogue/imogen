@@ -8,7 +8,7 @@ import tqdm
 
 # import wandb
 from torch import Tensor, nn
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 import postnet
 import v2postnet
 from core import ImgPrompt, EmbedPrompt, Prompt
@@ -51,6 +51,7 @@ class MultiheadedSelfAttention(nn.Module):
         self.proj_dropout = nn.Dropout(proj_dropout)
 
     def forward(self, x):
+        x = x.unsqueeze(1)
         logging.info("x.shape: %s", x.shape)
         B, N, C = x.shape
         qkv_output = self.qkv(x)
@@ -60,10 +61,11 @@ class MultiheadedSelfAttention(nn.Module):
         qkv = qkv_reshaped.permute(
             2,  # qkv
             0,  # batch
-            3,  # channel
             1,  # num_heads
+            3,  # channel
             4,  # embed_dim
         )
+        logging.info("qkv.shape: %s", qkv.shape)
         q, k, v = torch.chunk(qkv, 3)
         logging.info("q.shape: %s", q.shape)
         attn = torch.bmm(q, k.transpose(-2, -1)) * self.scale  # <q,k> / sqrt(d)
@@ -200,11 +202,11 @@ class LikelyTrainer:
             prediction = self.net.predict_text(embeds)
         else:
             embeds = torch.cat(
-                [massage_embeds(prompt).unsqueeze(0) for prompt in batch]
+                [massage_embeds(prompt) for prompt in batch]
             )
             # embeds = (embeds - embeds.mean()) / embeds.std()
             actual = torch.cat(
-                [massage_actual(prompt).unsqueeze(0) for prompt in batch]
+                [massage_actual(prompt) for prompt in batch]
             )
             prediction = self.net.predict_wide(embeds)  # pylint: disable
         print_once("imgemb", "img embed:", embeds.shape)
@@ -237,9 +239,9 @@ class LikelyTrainer:
         img_losses = []
         text_losses = []
         losses = []
-        writer = SummaryWriter(
-            comment=COMMENT
-        )  # comment=input("comment for run> "))  # type: ignore
+        # writer = SummaryWriter(
+        #     comment=COMMENT
+        # )  # comment=input("comment for run> "))  # type: ignore
         pbar = tqdm.tqdm(batches, desc="batch")
         for i, batch in enumerate(pbar):
             info = {}

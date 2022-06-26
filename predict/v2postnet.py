@@ -3,7 +3,7 @@ from typing import Optional, Any
 import torch
 import tqdm
 from torch import Tensor, nn
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 from clip import clip
 from core import ImgPrompt
 import postnet
@@ -114,7 +114,7 @@ def massage(prompt: ImgPrompt) -> tuple[Tensor, Tensor]:
     return massage_embeds(prompt), massage_actual(prompt)
 
 
-def massage_embeds(prompt: ImgPrompt) -> Tensor:
+def massage_embeds(prompt):
     text = prompt.embed.reshape([512]).to(torch.float32).to(device)
     return torch.cat(
         [

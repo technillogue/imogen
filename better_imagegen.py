@@ -30,7 +30,6 @@ sys.path.append("./taming-transformers")
 from taming.models import cond_transformer, vqgan
 
 sys.path.append("./predict")
-from likely_trainer import Likely, Gaussify
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -202,9 +201,14 @@ class Prompt(nn.Module):
         return f"{self.tag}: dwell {self.dwelt}, weight {self.weight}"
 
 
-class ReactionPredictor(nn.Module):
+class LikelyLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
+        raise Exception
+        from likely_trainer import Likely, Gaussify
+
+        sys.modules["__main__"].Gaussify = Gaussify
+        sys.modules["__main__"].Likely = Likely
 
         self.predictor = torch.load(
             "predict/likely.pth",
@@ -217,6 +221,24 @@ class ReactionPredictor(nn.Module):
         return 1 - self.predictor.predict_wide(generated_image_embedding).mean()
 
 
+class ReactionPredictorLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        from shared_model import Gaussify
+
+        sys.modules["__main__"].Gaussify = Gaussify
+
+        self.predictor = torch.load(
+            "reaction_predictor.pth",
+            map_location="cuda:0" if torch.cuda.is_available() else "cpu",
+        )
+
+    def forward(self, generated_image_embedding: Tensor) -> Tensor:
+        # image_embedding is usually [64, 512]
+        # predictor returns 1 if it would get reactions, but we want 0 to be good
+        return 1 - self.predictor(generated_image_embedding).mean()
+
+
 if utils.get_secret("REDIS_URL"):
     redis = aioredis.from_url(utils.get_secret("REDIS_URL"))
 else:
@@ -226,7 +248,8 @@ else:
 
 class Generator:
     "class for holding onto the models"
-    likely_loss: Optional[ReactionPredictor] = None
+    likely_loss: Optional[LikelyLoss] = None
+    reaction_loss: Optional[ReactionPredictorLoss] = None
 
     def __init__(self, args: "BetterNamespace") -> None:
         self.args = args
@@ -299,7 +322,9 @@ class Generator:
             None, :, None, None
         ]
         if args.likely and not self.likely_loss:
-            self.likely_loss = ReactionPredictor()
+            self.likely_loss = LikelyLoss()
+        elif args.reaction_loss and not self.reaction_loss:
+            self.reaction_loss = ReactionPredictorLoss()
 
         if args.seed is not None:
             seed = args.seed
@@ -493,6 +518,9 @@ class Generator:
                 )
                 # break this out into a variable
                 losses.append(self.likely_loss(massaged) * 0.7)
+            elif args.reaction_loss:
+                assert self.reaction_loss
+                losses.append(self.reaction_loss(generated_image_embedding))
             if not losses:
                 raise IndexError
             return losses
@@ -606,7 +634,8 @@ base_args = BetterNamespace(
     dwell=100,  # @param {type: "number"}
     profile=False,  # cprofile
     video=False,
-    likely=True,
+    likely=False,
+    reaction_loss=True,
     prod=True,
     slug=None,
 )

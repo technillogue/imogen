@@ -42,5 +42,5 @@ COPY --from=model /x4.pth /app/Real-ESRGAN/weights/
 COPY ./reaction_predictor.pth /app/
 COPY ./utils.py ./better_imagegen.py /app/ 
 RUN python3.9 better_imagegen.py || true
-COPY ./CHANGELOG.md ./stream.py /app/
+COPY ./CHANGELOG.md ./stream.py ./predict/postnet.py /app/
 ENTRYPOINT ["/usr/bin/python3", "/app/stream.py"]
