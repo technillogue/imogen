@@ -28,7 +28,7 @@ RUN python3.10 download_models.py
 # RUN pwd
 # RUN curl -sSL https://install.python-poetry.org > /app/install.py
 
-FROM nvidia/cuda:11.6.2-cudnn8-runtime-ubuntu20.04
+FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
 ENV DEBIAN_FRONTEND="noninteractive"
 RUN ln --symbolic --force --no-dereference /usr/share/zoneinfo/EST && echo "EST" > /etc/timezone
 RUN apt-get update && apt-get install -y software-properties-common \ 
